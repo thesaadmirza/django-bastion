@@ -99,7 +99,12 @@ def migrations(session: nox.Session) -> None:
     """A missing migration in an auth package is a production outage."""
     session.install("-e", ".", "--group", "dev")
     session.run(
-        "python", "-m", "django", "makemigrations", "--check", "--dry-run",
+        "python",
+        "-m",
+        "django",
+        "makemigrations",
+        "--check",
+        "--dry-run",
         env={"DJANGO_SETTINGS_MODULE": "tests.settings"},
     )
 
@@ -119,7 +124,8 @@ def wheel_sanity(session: nox.Session) -> None:
     session.run("python", "-m", "build", "--wheel", "--outdir", "dist")
     session.install("--force-reinstall", "--no-deps", *session.posargs or ["dist/*.whl"])
     session.run(
-        "python", "-c",
+        "python",
+        "-c",
         "import importlib.resources as r, bastion;"
         "assert (r.files('bastion') / 'py.typed').is_file(), 'py.typed missing from wheel';"
         "print('py.typed present, version', bastion.__version__)",

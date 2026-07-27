@@ -24,7 +24,7 @@ config["BASTION"] = {"IDENTITY": {"KEY": ("email",)}}
 settings.configure(**config)
 django.setup()
 
-from django.core.checks import run_checks  # noqa: E402
+from django.core.checks import run_checks
 
 for message in run_checks(include_deployment_checks=True):
     if str(message.id).startswith("bastion"):

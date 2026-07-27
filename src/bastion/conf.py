@@ -91,9 +91,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 #: Settings whose values are dotted paths and should be imported on access.
-IMPORT_STRINGS = frozenset(
-    {"USER_RESOLVER", "USER_PROVISIONER", "GROUP_RECONCILER"}
-)
+IMPORT_STRINGS = frozenset({"USER_RESOLVER", "USER_PROVISIONER", "GROUP_RECONCILER"})
 
 _cache: dict[str, Any] = {}
 
@@ -134,7 +132,7 @@ def get_setting(name: str, default: Any = ...) -> Any:
     return value
 
 
-class dynamic_setting(Generic[T]):  # noqa: N801 - descriptor, lowercase by convention
+class dynamic_setting(Generic[T]):
     """A lazily resolved, read-only, typed settings attribute.
 
     The attribute name *is* the setting name::

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 # Long enough to satisfy security.W009. Still not a secret; this is the suite.
-SECRET_KEY = "wQ7k2LpZ9vXn4RtY8mHbF3sJdA6cE1gU5oI0yTqNxVwPzKrMlBhGjSfDaCeZ"  # noqa: S105
+SECRET_KEY = "wQ7k2LpZ9vXn4RtY8mHbF3sJdA6cE1gU5oI0yTqNxVwPzKrMlBhGjSfDaCeZ"
 DEBUG = False
 ALLOWED_HOSTS = ["testserver", "localhost"]
 USE_TZ = True

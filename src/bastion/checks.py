@@ -105,7 +105,7 @@ def check_breakglass_alerting(app_configs: Any, **kwargs: Any) -> list[CheckMess
                 "Break-glass is enabled with no ALERT_SINKS configured.",
                 hint=(
                     "Emergency access that nobody is told about is indistinguishable "
-                    'from a backdoor. Configure at least one sink in '
+                    "from a backdoor. Configure at least one sink in "
                     'BASTION["BREAK_GLASS"]["ALERT_SINKS"].'
                 ),
                 id="bastion.E100",
@@ -126,8 +126,7 @@ def check_session_engine(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
     if engine.endswith("signed_cookies"):
         return [
             Warning(
-                "SESSION_ENGINE is signed_cookies, which stores no server-side "
-                "session state.",
+                "SESSION_ENGINE is signed_cookies, which stores no server-side session state.",
                 hint=(
                     "Individual sessions cannot be enumerated or deleted. "
                     "Deprovisioning still works, because it rotates the session "
