@@ -1,0 +1,81 @@
+"""Minimal settings so contributors can run `pytest` with no arguments."""
+
+from __future__ import annotations
+
+import os
+
+# Long enough to satisfy security.W009. Still not a secret; this is the suite.
+SECRET_KEY = "wQ7k2LpZ9vXn4RtY8mHbF3sJdA6cE1gU5oI0yTqNxVwPzKrMlBhGjSfDaCeZ"  # noqa: S105
+DEBUG = False
+ALLOWED_HOSTS = ["testserver", "localhost"]
+USE_TZ = True
+
+INSTALLED_APPS = [
+    "django.contrib.contenttypes",
+    "django.contrib.auth",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "bastion",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+ROOT_URLCONF = "tests.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+
+def _database() -> dict[str, object]:
+    backend = os.environ.get("BASTION_TEST_DB", "sqlite")
+    if backend == "postgres":
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": "bastion",
+            "USER": "postgres",
+            "PASSWORD": "bastion",
+            "HOST": "127.0.0.1",
+            "PORT": "5432",
+        }
+    if backend == "mysql":
+        return {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": "bastion",
+            "USER": "root",
+            "PASSWORD": "bastion",
+            "HOST": "127.0.0.1",
+            "PORT": "3306",
+        }
+    return {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
+
+
+DATABASES = {"default": _database()}
+
+# Secure by default in the test suite too, so that the deploy checks pass and
+# a regression in them is visible rather than masked.
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+SECURE_HSTS_SECONDS = 3600
+
+AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
