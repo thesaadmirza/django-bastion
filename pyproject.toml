@@ -1,0 +1,160 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "django-bastion"
+version = "0.0.1a0"
+description = "Enterprise SSO and identity governance for Django: admin login, claims-to-role mapping, audit, and break-glass."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.11"
+authors = [{ name = "Saad Mirza" }]
+keywords = ["django", "sso", "oidc", "saml", "scim", "audit", "identity", "authentication"]
+
+# Runtime dependencies stay loose. A library that pins is unusable in an enterprise.
+dependencies = [
+    "Django>=5.2",
+]
+
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Framework :: Django :: 6.1",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+    "Topic :: System :: Systems Administration :: Authentication/Directory",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+# SAML is opt-in on purpose. It drags in xmlsec, which needs system packages,
+# and the 90% case does not need it. See FOUNDATIONS.md 1.2.
+oidc = ["authlib>=1.6.9"]
+saml = ["pysaml2>=6.5.0"]
+ldap = ["django-auth-ldap>=4.8", "python-ldap>=3.4.5"]
+scim = []
+
+[project.urls]
+Homepage = "https://github.com/OWNER/django-bastion"
+Documentation = "https://django-bastion.readthedocs.io"
+Changelog = "https://github.com/OWNER/django-bastion/blob/main/CHANGELOG.md"
+Issues = "https://github.com/OWNER/django-bastion/issues"
+Security = "https://github.com/OWNER/django-bastion/blob/main/SECURITY.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.120",
+    "mypy>=1.14",
+    "django-stubs[compatible-mypy]>=5.1",
+    "pyright>=1.1.390",
+    "ruff>=0.9",
+    "nox>=2024.10",
+    "pip-audit>=2.7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bastion"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/docs", "/CHANGELOG.md", "/SECURITY.md", "/SUPPORT_MATRIX.md"]
+
+# --------------------------------------------------------------------------- #
+# Lint
+# --------------------------------------------------------------------------- #
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "S",         # bandit
+    "DTZ",       # naive datetimes -- audit records must be tz-aware
+    "T20",       # no print()
+    "RUF",
+]
+ignore = [
+    "S101",      # assert is fine in tests; banned in src by the check below
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "DTZ"]
+
+[tool.ruff.lint.flake8-bandit]
+# `assert` must never guard a runtime invariant in the auth path -- it vanishes
+# under `python -O`. See FOUNDATIONS.md 3.x (anti-patterns).
+check-typed-exception = true
+
+# --------------------------------------------------------------------------- #
+# Types
+# --------------------------------------------------------------------------- #
+[tool.mypy]
+python_version = "3.11"
+plugins = ["mypy_django_plugin.main"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+
+# Zone 1: the pure-Python security core. No Django dynamism, no excuse.
+[[tool.mypy.overrides]]
+module = ["bastion.rules.*", "bastion.claims.*", "bastion.protocols.*", "bastion.audit.*"]
+strict = true
+
+# Zone 2: models, admin, migrations. Relaxed because Django's descriptors defeat
+# strict mode without the plugin resolving every manager and reverse accessor.
+[[tool.mypy.overrides]]
+module = ["bastion.migrations.*"]
+ignore_errors = true
+
+[tool.django-stubs]
+django_settings_module = "tests.settings"
+
+[tool.pyright]
+# Advisory, not a merge gate. Pyright does NOT load the mypy plugin, so this job
+# exists to prove our public API is usable by the (large) pyright/Pylance
+# population who see only the static stubs. See FOUNDATIONS.md 11.8.
+include = ["src"]
+typeCheckingMode = "basic"
+pythonVersion = "3.11"
+
+# --------------------------------------------------------------------------- #
+# Test
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+addopts = "--strict-markers --strict-config -ra"
+testpaths = ["tests"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["bastion"]
+
+[tool.coverage.report]
+fail_under = 95
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]

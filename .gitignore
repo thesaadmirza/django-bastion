@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.nox/
+.tox/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+# Hypothesis keeps a database of failing examples. Useful locally and in the
+# nightly cache; never committed.
+.hypothesis/
+docs/_build/
+*.sqlite3
+.DS_Store
+.idea/
+.vscode/
