@@ -1,0 +1,25 @@
+django-bastion
+Copyright 2026 django-bastion contributors
+
+This product includes software developed by the django-bastion contributors.
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+---
+
+Design and implementation of this package draws on prior art in the Django
+ecosystem, read at source. Where a mechanism was adopted rather than invented,
+it is credited in FOUNDATIONS.md and in the docstring of the module that uses
+it. In particular:
+
+  - The `dynamic_setting` descriptor in bastion/conf.py follows the pattern
+    established by mozilla-django-oidc-db (Maykin Media, BSD-3-Clause).
+  - The settings resolution and `setting_changed` invalidation follow
+    Django REST Framework's APISettings (BSD-3-Clause).
+  - The predicate-tree condition model follows django-auth-ldap's
+    LDAPGroupQuery (BSD-2-Clause).
+  - The ordered rule table with per-rule sync mode follows Keycloak's
+    identity-provider mappers (Apache-2.0).
+  - The dual-token elevation primitive follows django-elevate (BSD-3-Clause).
+
+None of these projects endorse this one.
