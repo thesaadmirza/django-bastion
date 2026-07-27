@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege at the top; jobs opt in to more if they need it.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_COLOR: "1"
+
+# NOTE: actions below are referenced by tag. Renovate (see .github/renovate.json5)
+# pins every one to a full commit SHA on its first run and keeps the trailing
+# version comment fresh. Do not merge this workflow to main until that has
+# happened -- the tj-actions/changed-files and trivy-action compromises both
+# worked by moving a mutable tag.
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv run --group dev ruff check src tests noxfile.py
+      - run: uv run --group dev ruff format --check src tests noxfile.py
+      - name: No assert in the auth path
+        # assert vanishes under `python -O`. mozilla-django-oidc-db guards
+        # runtime invariants with bare asserts; we will not.
+        run: |
+          ! grep -rn --include='*.py' -E '^\s*assert ' src/
+      - name: No verification-disabling flags outside tests
+        run: |
+          ! grep -rn --include='*.py' -E 'verify\s*=\s*False|insecure\s*=\s*True|strict\s*=\s*False|# ?nosec' src/
+
+  typecheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --group dev mypy src
+
+  typecheck-pyright:
+    # Advisory: proves the public API is usable without the mypy plugin.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --group dev pyright src
+
+  tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        django: ["5.2", "6.0", "6.1"]
+        exclude:
+          # Django 6.x requires Python 3.12+
+          - python: "3.11"
+            django: "6.0"
+          - python: "3.11"
+            django: "6.1"
+    name: py${{ matrix.python }} / dj${{ matrix.django }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv run --with "Django~=${{ matrix.django }}.0" --group dev pytest --cov=bastion
+
+  tests-databases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [postgres, mysql]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: bastion
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ["5432:5432"]
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: bastion
+          MYSQL_DATABASE: bastion
+        options: >-
+          --health-cmd "mysqladmin ping" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ["3306:3306"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --group dev pytest
+        env:
+          BASTION_TEST_DB: ${{ matrix.database }}
+
+  coverage-core:
+    # The security core carries a 100% gate. The rest of the repo is 95%.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --group dev nox -s coverage_core
+
+  migrations:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: No missing migrations
+        run: uv run --group dev nox -s migrations
+
+  wheel-sanity:
+    # Builds the wheel, installs it clean, and proves py.typed survived.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --group dev nox -s wheel_sanity
+
+  workflow-audit:
+    # zizmor catches template injection and unpinned actions in our own CI.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uvx zizmor --format sarif . > zizmor.sarif
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: zizmor.sarif

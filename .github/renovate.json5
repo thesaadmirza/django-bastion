@@ -1,0 +1,42 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    // Pins every GitHub Action to a full commit SHA and keeps the trailing
+    // version comment fresh. This is the cheapest supply-chain control that
+    // exists, and it is the one that would have blunted both the
+    // tj-actions/changed-files and trivy-action compromises.
+    "helpers:pinGitHubActionDigestsToSemver",
+  ],
+
+  // Never auto-merge. Update bots are themselves a documented malware delivery
+  // vector; every bot PR gets CI plus a human.
+  automerge: false,
+
+  // The Django x Python matrix generates a lot of noise otherwise.
+  packageRules: [
+    {
+      matchManagers: ["github-actions"],
+      groupName: "github actions",
+      schedule: ["before 6am on monday"],
+    },
+    {
+      matchDepTypes: ["dependency-groups"],
+      groupName: "dev toolchain",
+      schedule: ["before 6am on monday"],
+    },
+    {
+      // Auth libraries get their own PRs, unbatched, reviewed individually.
+      // authlib alone has had 24 OSV entries, 11 in the last 15 months.
+      matchPackageNames: ["authlib", "pysaml2", "python3-saml", "python-ldap", "PyJWT"],
+      groupName: null,
+      labels: ["security", "dependencies"],
+      prPriority: 10,
+    },
+  ],
+
+  vulnerabilityAlerts: {
+    labels: ["security"],
+    prPriority: 20,
+  },
+}
