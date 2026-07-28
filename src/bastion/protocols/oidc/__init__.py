@@ -19,6 +19,13 @@ So signature verification calls ``cryptography`` directly, which is the same
 primitive library authlib and PyJWT both sit on. The encoding work this leaves
 us owning is roughly fifty lines and is well understood: base64url padding,
 raw-to-DER conversion for ECDSA, and PSS parameters.
+
+The same reasoning ended up applying to the token endpoint. The exchange is a
+form POST and a JSON parse; what actually needed care was never putting a
+response body into an exception or a log, which is exactly the part a
+general-purpose client would not do for us. So there is no JOSE or OAuth
+library in the dependency list at all, and the HTTP transport is pluggable with
+a standard-library default.
 """
 
 from bastion.protocols.oidc.jose import (

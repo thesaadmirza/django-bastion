@@ -40,9 +40,16 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# SAML is opt-in on purpose. It drags in xmlsec, which needs system packages,
-# and the 90% case does not need it. See FOUNDATIONS.md 1.2.
-oidc = ["authlib>=1.6.9"]
+# OIDC needs nothing beyond `cryptography`, which Django already pulls in via
+# its own dependencies in most deployments. The extra exists so the intent is
+# declarable, and so a future addition here is not a surprise.
+#
+# There is deliberately no JOSE library. See src/bastion/protocols/oidc for
+# why, and FOUNDATIONS.md 1.2 for the decision record.
+oidc = ["cryptography>=44.0"]
+
+# SAML is opt-in because it drags in xmlsec, which needs system packages, and
+# the common case does not need it.
 saml = ["pysaml2>=6.5.0"]
 ldap = ["django-auth-ldap>=4.8", "python-ldap>=3.4.5"]
 scim = []

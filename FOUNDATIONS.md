@@ -60,8 +60,14 @@ an embedded `jwk`, accepting `alg: none`, algorithm confusion. Wrapping a librar
 policy inherits its fail-open bugs and none of its judgement.
 
 The encoding work this leaves us owning is about fifty lines — base64url padding, raw-to-DER for ECDSA,
-PSS parameters — and is well understood. `authlib` remains a declared extra for the token-endpoint client,
-where it does work we are not duplicating.
+PSS parameters — and is well understood.
+
+The same reasoning then extended to the token endpoint, which was originally the justification for keeping
+`authlib` as a dependency. Writing the exchange made clear it is a form POST and a JSON parse; the part
+that genuinely needed care was never putting a response body into an exception or a log, which is exactly
+what a general-purpose client does not do for you. So **there is no JOSE or OAuth library in the dependency
+list at all.** The OIDC path needs `cryptography` and nothing else, and the HTTP transport is pluggable
+with a standard-library default so embedding applications are not forced onto a particular client.
 
 ### 1.3 Non-goals
 
