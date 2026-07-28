@@ -13,6 +13,7 @@ import logging
 
 from django.contrib.auth import login as auth_login
 from django.contrib.auth.decorators import login_not_required
+from django.contrib.auth.models import AbstractBaseUser
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
@@ -184,12 +185,12 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
     return response
 
 
-def _has_any_privilege(user: object, connection: Connection) -> bool:
+def _has_any_privilege(user: AbstractBaseUser, connection: Connection) -> bool:
     return bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
 
 
 def _denied(
-    request: HttpRequest, user: object, connection: Connection, reference: str
+    request: HttpRequest, user: AbstractBaseUser, connection: Connection, reference: str
 ) -> HttpResponse:
     logger.info("Authenticated but unauthorised on %s [ref %s]", connection.identifier, reference)
     response = render(
@@ -207,7 +208,7 @@ def _denied(
     return response
 
 
-def _establish_session(request: HttpRequest, user: object) -> None:
+def _establish_session(request: HttpRequest, user: AbstractBaseUser) -> None:
     """Discard everything from before the privilege transition, then log in.
 
     ``auth.login`` calls ``cycle_key`` only when ``SESSION_KEY`` is absent, so
@@ -216,4 +217,6 @@ def _establish_session(request: HttpRequest, user: object) -> None:
     pre-authentication identifier and its contents do not survive.
     """
     request.session.flush()
-    auth_login(request, user, backend="bastion.backends.SSOBackend")
+    # Same stubs narrowing as the backend: auth.login is typed against the
+    # configured user model, while the runtime contract is any AbstractBaseUser.
+    auth_login(request, user, backend="bastion.backends.SSOBackend")  # type: ignore[arg-type]

@@ -58,7 +58,12 @@ class SSOBackend(BaseBackend):
             return None
         return self.resolve_or_provision(sso_identity, sso_connection)
 
-    def get_user(self, user_id: Any) -> AbstractBaseUser | None:
+    # django-stubs resolves the supertype's return to the *configured* user
+    # model, which for most projects is auth.User. The runtime contract is
+    # wider than that -- Django documents any AbstractBaseUser subclass -- and
+    # a package must honour the wider one. The narrowing is the stubs being
+    # more specific than Django is, so the override is deliberate.
+    def get_user(self, user_id: Any) -> AbstractBaseUser | None:  # type: ignore[override]
         user_model = get_user_model()
         try:
             user = user_model._default_manager.get(pk=user_id)
@@ -86,7 +91,10 @@ class SSOBackend(BaseBackend):
         if identity is None:
             user = self.create_user(claims, connection)
             FederatedIdentity.objects.create(
-                user=user,
+                # Same stubs narrowing as get_user: the foreign key is to
+                # AUTH_USER_MODEL, which the plugin resolves to the concrete
+                # configured model.
+                user=user,  # type: ignore[misc]
                 issuer=claims.issuer,
                 subject=claims.subject,
                 subject_source=claims.subject_source,
