@@ -15,6 +15,7 @@ from __future__ import annotations
 from django.urls import path
 
 from bastion import views
+from bastion.breakglass.views import break_glass_login
 
 app_name = "bastion"
 
@@ -23,4 +24,9 @@ urlpatterns = [
     path("callback/", views.callback, name="callback"),
     path("login/<slug:connection>/", views.begin, name="begin-connection"),
     path("callback/<slug:connection>/", views.callback, name="callback-connection"),
+    # Off unless BREAK_GLASS["ENABLED"], and it 404s rather than announcing
+    # itself when disabled. Deployments that want it somewhere less guessable
+    # should include bastion.urls at a normal prefix and route this one
+    # separately.
+    path("break-glass/", break_glass_login, name="break-glass"),
 ]

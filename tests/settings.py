@@ -98,3 +98,8 @@ SECURE_HSTS_SECONDS = 3600
 AUTHENTICATION_BACKENDS = ["bastion.backends.SSOBackend"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# The break-glass tests exercise real password checking, including the dummy
+# hash that equalises timing on the unknown-account path. At default work
+# factors that costs seconds per test for no added confidence.
+PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]

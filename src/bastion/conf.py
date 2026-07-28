@@ -68,11 +68,16 @@ DEFAULTS: dict[str, Any] = {
         "local_login": "breakglass_only",
     },
     "BREAK_GLASS": {
+        # Off by default. An emergency route nobody decided to have is worse
+        # than not having one.
         "ENABLED": False,
+        #: CIDRs the emergency login answers from. Empty means anywhere, which
+        #: the startup check warns about rather than silently accepting.
         "ALLOWED_NETWORKS": [],
-        "REQUIRE_MFA": True,
-        "MAX_ELEVATION_SECONDS": 3600,
+        #: Callables taking (subject, detail), fired synchronously. A startup
+        #: check refuses to run with break-glass on and this empty.
         "ALERT_SINKS": [],
+        "SUCCESS_URL": "/admin/",
     },
     "AUDIT": {
         "SINKS": ["bastion.audit.sinks.DatabaseSink"],

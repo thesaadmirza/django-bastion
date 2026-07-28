@@ -22,6 +22,10 @@ from bastion.protocols.oidc.transaction import MemoryTransactionStore
 from tests.idp.provider import FakeIdP
 from tests.idp.transport import FakeTransport
 
+# The project checks query break-glass accounts, so the whole module needs a
+# database now.
+pytestmark = pytest.mark.django_db
+
 
 def build(idp: FakeIdP, transport: FakeTransport, **overrides: Any) -> Connection:
     defaults: dict[str, Any] = {
@@ -129,9 +133,39 @@ class TestHonesty:
         report = check_project()
         assert statuses(report.results)["urls"] is Status.UNVERIFIABLE
 
-    def test_break_glass_absence_is_stated(self) -> None:
+    def test_break_glass_being_off_is_stated(self) -> None:
+        """Disabled is a legitimate choice, but it must be a stated one: a
+        provider outage locks out everyone, including whoever would fix it."""
         report = check_project()
-        assert statuses(report.results)["break-glass"] is Status.UNVERIFIABLE
+        assert statuses(report.results)["break-glass"] is Status.WARN
+
+    def test_alerting_is_reported_as_unverifiable_when_configured(self, settings) -> None:
+        """Sinks being listed is not evidence an alert arrives. Only a drill
+        establishes that, and the doctor says so rather than showing green."""
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": ["bastion.breakglass.service.log_only_sink"],
+            }
+        }
+        report = check_project()
+        assert statuses(report.results)["break-glass alerting"] is Status.UNVERIFIABLE
+
+    def test_enabled_without_alerting_fails(self, settings) -> None:
+        settings.BASTION = {"BREAK_GLASS": {"ENABLED": True, "ALERT_SINKS": []}}
+        report = check_project()
+        assert statuses(report.results)["break-glass alerting"] is Status.FAIL
+        assert report.failed
+
+    def test_enabled_without_accounts_fails(self, settings) -> None:
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": ["bastion.breakglass.service.log_only_sink"],
+            }
+        }
+        report = check_project()
+        assert statuses(report.results)["break-glass accounts"] is Status.FAIL
 
     def test_unverifiable_items_do_not_fail_the_run(
         self, idp: FakeIdP, transport: FakeTransport

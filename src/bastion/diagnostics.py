@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+from bastion.conf import get_setting
 from bastion.connections import Connection
 from bastion.exceptions import BastionError
 from bastion.protocols.oidc.jose import ALLOWED_ALGORITHMS
@@ -333,13 +334,68 @@ def _project_checks() -> Iterator[Result]:
     else:
         yield Result("auth backend", Status.OK, "SSO backend is installed.")
 
-    yield Result(
-        "break-glass",
-        Status.UNVERIFIABLE,
-        "Not implemented in this version.",
-        hint=(
-            "Until it lands, an identity provider outage locks everyone out. "
-            "Keep a superuser you can reach by another route and know how to "
-            "reach it."
-        ),
-    )
+    yield from _break_glass_checks()
+
+
+def _break_glass_checks() -> Iterator[Result]:
+    from bastion.breakglass.models import BreakGlassAccount
+
+    config = get_setting("BREAK_GLASS")
+    if not config.get("ENABLED"):
+        yield Result(
+            "break-glass",
+            Status.WARN,
+            "Disabled.",
+            hint=(
+                "An identity provider outage will lock everyone out, including "
+                "whoever would fix it. Enable it, or document the out-of-band "
+                "route you will use instead."
+            ),
+        )
+        return
+
+    if not config.get("ALERT_SINKS"):
+        yield Result(
+            "break-glass alerting",
+            Status.FAIL,
+            "Enabled with no ALERT_SINKS.",
+            hint="Emergency access nobody is told about is a backdoor with paperwork.",
+        )
+    else:
+        yield Result(
+            "break-glass alerting",
+            Status.UNVERIFIABLE,
+            f"{len(config['ALERT_SINKS'])} sink(s) configured.",
+            hint=(
+                "Whether an alert actually arrives, through a channel that does "
+                "not depend on the identity provider, is only established by "
+                "running a drill. Use bastion_breakglass drill."
+            ),
+        )
+
+    active = BreakGlassAccount.objects.active().count()
+    if active == 0:
+        yield Result(
+            "break-glass accounts",
+            Status.FAIL,
+            "Enabled, but no active accounts exist.",
+            hint="bastion_breakglass grant --user <name> --reason <why>",
+        )
+    elif active == 1:
+        yield Result(
+            "break-glass accounts",
+            Status.WARN,
+            "Only one active account.",
+            hint="Two is the recommended minimum, so losing one is not losing all.",
+        )
+    else:
+        yield Result("break-glass accounts", Status.OK, f"{active} active.")
+
+    stale = BreakGlassAccount.objects.stale().count()
+    if stale:
+        yield Result(
+            "break-glass validation",
+            Status.WARN,
+            f"{stale} account(s) not validated in 90 days.",
+            hint="An emergency account nobody has tried is one nobody knows works.",
+        )

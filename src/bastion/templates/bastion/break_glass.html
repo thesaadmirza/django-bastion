@@ -1,0 +1,72 @@
+{% load i18n %}<!--
+  Deliberately plain. No branding to imitate, no reset link, no account
+  discovery, and one error message for every cause.
+
+  The banner is not decoration. Someone reaching this page during an incident
+  should know before they type that using it will page people.
+-->
+<!doctype html>
+<html lang="{{ LANGUAGE_CODE|default:'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if error %}{% translate "Error: " %}{% endif %}{% translate "Emergency access" %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0;
+           padding: 2rem 1rem; color: #1b1b1b; background: #fff; }
+    main { max-width: 30rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-top: 0; }
+    .notice { border: 3px solid #d4351c; padding: 1rem; margin-bottom: 1.5rem; }
+    label { display: block; font-weight: 600; margin-top: 1rem; }
+    input { font: inherit; width: 100%; padding: 0.5rem; margin-top: 0.25rem;
+            min-height: 44px; box-sizing: border-box; }
+    button { font: inherit; margin-top: 1.5rem; padding: 0.6rem 1.2rem;
+             min-height: 44px; cursor: pointer; }
+    .error { border-left: 5px solid #d4351c; padding-left: 1rem; }
+    .reference { font-family: ui-monospace, monospace; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #f3f2f1; background: #101010; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 tabindex="-1">{% translate "Emergency access" %}</h1>
+
+    <div class="notice">
+      <p>
+        {% blocktranslate trimmed %}
+          This route bypasses single sign-on. Every attempt, successful or not,
+          is recorded and raises an alert with the security team.
+        {% endblocktranslate %}
+      </p>
+      <p>
+        {% blocktranslate trimmed %}
+          If single sign-on is working, use it instead.
+        {% endblocktranslate %}
+      </p>
+    </div>
+
+    {% if error %}
+      <p class="error" role="alert">
+        {{ error }}
+        {% translate "Reference:" %} <span class="reference">{{ reference }}</span>
+      </p>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+      <label for="id_username">{% translate "Username" %}</label>
+      <input id="id_username" name="username" type="text"
+             autocomplete="username" autocapitalize="none" spellcheck="false"
+             required>
+
+      <label for="id_password">{% translate "Password" %}</label>
+      <input id="id_password" name="password" type="password"
+             autocomplete="current-password" required>
+
+      <button type="submit">{% translate "Sign in" %}</button>
+    </form>
+  </main>
+</body>
+</html>

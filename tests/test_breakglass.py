@@ -1,0 +1,355 @@
+"""Emergency access.
+
+Two properties are unusual enough to be worth naming.
+
+There is no lockout. Every other login path in this package should lock out;
+this one must not, because locking the fire escape is itself the denial of
+service. Failures alert instead.
+
+Alerting is not optional. A startup check refuses a configuration where
+break-glass is on and no sink is configured, and every outcome fires the sinks,
+including refusals.
+"""
+
+from __future__ import annotations
+
+from io import StringIO
+from typing import Any
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.test import Client
+from django.utils import timezone
+
+from bastion.audit.events import Event
+from bastion.audit.models import AuditEvent
+from bastion.breakglass.models import BreakGlassAccount, LastBreakGlassAccount
+from bastion.breakglass.service import (
+    BreakGlassDenied,
+    authenticate_break_glass,
+    is_break_glass,
+)
+
+pytestmark = pytest.mark.django_db
+
+User = get_user_model()
+
+SINK = "tests.test_breakglass.recording_sink"
+ALERTS: list[tuple[str, str]] = []
+
+
+def recording_sink(*, subject: str, detail: str) -> None:
+    ALERTS.append((subject, detail))
+
+
+@pytest.fixture(autouse=True)
+def _clear_alerts():
+    ALERTS.clear()
+    yield
+    ALERTS.clear()
+
+
+@pytest.fixture
+def enabled(settings):
+    settings.BASTION = {
+        "BREAK_GLASS": {"ENABLED": True, "ALERT_SINKS": [SINK], "ALLOWED_NETWORKS": []}
+    }
+
+
+@pytest.fixture
+def operator():
+    user = User.objects.create_user(username="firefighter", password="a-real-password")
+    BreakGlassAccount.objects.create(user=user, reason="incident response")
+    return user
+
+
+def run(*args: str, **kwargs: Any) -> str:
+    out = StringIO()
+    call_command("bastion_breakglass", *args, stdout=out, stderr=StringIO(), **kwargs)
+    return out.getvalue()
+
+
+class TestAuthentication:
+    def test_a_flagged_account_can_sign_in(self, enabled, operator) -> None:
+        user = authenticate_break_glass(username="firefighter", password="a-real-password")
+        assert user == operator
+
+    def test_an_unflagged_account_cannot(self, enabled) -> None:
+        User.objects.create_user(username="ordinary", password="a-real-password")
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="ordinary", password="a-real-password")
+
+    def test_a_wrong_password_is_refused(self, enabled, operator) -> None:
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="firefighter", password="wrong")
+
+    def test_an_unknown_account_is_refused(self, enabled) -> None:
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="nobody", password="anything")
+
+    def test_an_inactive_user_is_refused(self, enabled, operator) -> None:
+        User.objects.filter(pk=operator.pk).update(is_active=False)
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="firefighter", password="a-real-password")
+
+    def test_a_revoked_account_is_refused(self, enabled, operator) -> None:
+        BreakGlassAccount.objects.filter(user=operator).update(is_active=False)
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="firefighter", password="a-real-password")
+
+    def test_it_is_refused_entirely_when_disabled(self, operator) -> None:
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="firefighter", password="a-real-password")
+
+    @pytest.mark.parametrize(
+        ("username", "case"),
+        [("nobody", "unknown account"), ("ordinary", "not flagged")],
+    )
+    def test_a_refused_path_still_hashes(
+        self, enabled, operator, monkeypatch, username: str, case: str
+    ) -> None:
+        """Timing equalisation, asserted structurally rather than measured.
+
+        Returning early without hashing tells an attacker, by response time,
+        whether the account exists and whether it is a break-glass account.
+        Both are things this endpoint should not answer.
+
+        A statistical timing test would be flaky on a shared runner and slow
+        everywhere; asserting the work happens is the property that actually
+        needs protecting from a future refactor.
+        """
+        User.objects.create_user(username="ordinary", password="a-real-password")
+
+        calls: list[int] = []
+        from bastion.breakglass import service
+
+        real = service.check_password
+        monkeypatch.setattr(
+            service,
+            "check_password",
+            lambda *args, **kwargs: (calls.append(1), real(*args, **kwargs))[1],
+        )
+
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username=username, password="wrong")
+
+        assert calls, f"no password hash performed on the {case} path"
+
+    def test_the_reason_is_never_the_message_shown(self, enabled, operator) -> None:
+        """Which of the gates was failed is audit-record information. Telling
+        an attacker whether the account exists is free help."""
+        with pytest.raises(BreakGlassDenied) as unknown:
+            authenticate_break_glass(username="nobody", password="x")
+        with pytest.raises(BreakGlassDenied) as wrong:
+            authenticate_break_glass(username="firefighter", password="x")
+        assert unknown.value.reason == wrong.value.reason == "credentials"
+
+
+class TestNetworkRestriction:
+    def test_an_allowed_network_passes(self, settings, operator, rf) -> None:
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": [SINK],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8"],
+            }
+        }
+        request = rf.post("/", REMOTE_ADDR="10.1.2.3")
+        assert authenticate_break_glass(
+            username="firefighter", password="a-real-password", request=request
+        )
+
+    def test_a_disallowed_network_is_refused(self, settings, operator, rf) -> None:
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": [SINK],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8"],
+            }
+        }
+        request = rf.post("/", REMOTE_ADDR="203.0.113.9")
+        with pytest.raises(BreakGlassDenied) as caught:
+            authenticate_break_glass(
+                username="firefighter", password="a-real-password", request=request
+            )
+        assert caught.value.reason == "network"
+
+
+class TestAlerting:
+    def test_a_successful_use_alerts(self, enabled, operator) -> None:
+        authenticate_break_glass(username="firefighter", password="a-real-password")
+        assert ALERTS
+
+    def test_a_failed_attempt_also_alerts(self, enabled, operator) -> None:
+        """A wrong password on an emergency account is more interesting than a
+        successful login on a normal one."""
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="firefighter", password="wrong")
+        assert ALERTS
+
+    def test_an_attempt_on_an_unknown_account_alerts(self, enabled) -> None:
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="nobody", password="x")
+        assert ALERTS
+
+    def test_a_broken_sink_does_not_block_the_login(self, settings, operator) -> None:
+        """A broken pager must not prevent the emergency login it was meant to
+        announce."""
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": ["tests.test_breakglass.exploding_sink"],
+            }
+        }
+        assert authenticate_break_glass(username="firefighter", password="a-real-password")
+
+
+def exploding_sink(*, subject: str, detail: str) -> None:
+    raise RuntimeError("pager is down")
+
+
+class TestAudit:
+    def test_every_outcome_is_recorded_as_critical(self, enabled, operator) -> None:
+        authenticate_break_glass(username="firefighter", password="a-real-password")
+        record = AuditEvent.objects.filter(event_type=Event.PROTOCOL_FALLBACK).first()
+        assert record is not None
+        assert record.severity == "critical"
+        assert record.is_privileged is True
+        assert record.auth_protocol == "break_glass"
+
+    def test_a_refusal_is_recorded(self, enabled, operator) -> None:
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="firefighter", password="wrong")
+        assert AuditEvent.objects.filter(event_type=Event.PROTOCOL_FALLBACK).exists()
+
+
+class TestLifecycleExemption:
+    def test_a_flagged_account_is_recognised(self, operator) -> None:
+        """Directory sync must skip these. An emergency account deactivated by
+        the nightly reconciliation is one that will not work in the
+        emergency."""
+        assert is_break_glass(operator) is True
+
+    def test_an_ordinary_account_is_not(self) -> None:
+        assert is_break_glass(User.objects.create_user(username="ordinary")) is False
+
+
+class TestLastAccountGuard:
+    def test_the_only_account_cannot_be_deleted(self, operator) -> None:
+        with pytest.raises(LastBreakGlassAccount):
+            BreakGlassAccount.objects.get(user=operator).delete()
+
+    def test_one_of_two_can_be_deleted(self, operator) -> None:
+        spare = User.objects.create_user(username="spare", password="x")
+        BreakGlassAccount.objects.create(user=spare, reason="second")
+        BreakGlassAccount.objects.get(user=operator).delete()
+        assert BreakGlassAccount.objects.active().count() == 1
+
+
+class TestView:
+    def test_it_404s_when_disabled(self, client: Client) -> None:
+        """A disabled emergency endpoint should not advertise itself."""
+        assert client.get("/sso/break-glass/").status_code == 404
+
+    def test_the_form_renders_when_enabled(self, client: Client, enabled) -> None:
+        response = client.get("/sso/break-glass/")
+        assert response.status_code == 200
+        assert b"bypasses single sign-on" in response.content
+
+    def test_a_good_credential_signs_in(self, client: Client, enabled, operator) -> None:
+        response = client.post(
+            "/sso/break-glass/",
+            {"username": "firefighter", "password": "a-real-password"},
+        )
+        assert response.status_code == 302
+        assert client.session.get("_auth_user_id")
+
+    def test_the_session_is_marked(self, client: Client, enabled, operator) -> None:
+        client.post(
+            "/sso/break-glass/",
+            {"username": "firefighter", "password": "a-real-password"},
+        )
+        assert client.session.get("bastion_break_glass") is True
+
+    def test_a_bad_credential_returns_401(self, client: Client, enabled, operator) -> None:
+        response = client.post(
+            "/sso/break-glass/", {"username": "firefighter", "password": "wrong"}
+        )
+        assert response.status_code == 401
+
+    def test_repeated_failures_are_not_locked_out(self, client: Client, enabled, operator) -> None:
+        """Locking the fire escape is the denial of service. Failures alert
+        rather than block."""
+        for _ in range(10):
+            client.post("/sso/break-glass/", {"username": "firefighter", "password": "wrong"})
+        response = client.post(
+            "/sso/break-glass/",
+            {"username": "firefighter", "password": "a-real-password"},
+        )
+        assert response.status_code == 302
+
+
+class TestCommand:
+    def test_check_fails_when_disabled(self) -> None:
+        with pytest.raises(CommandError, match="not enabled"):
+            run("check")
+
+    def test_check_fails_without_accounts(self, enabled) -> None:
+        with pytest.raises(CommandError):
+            run("check")
+
+    def test_check_warns_about_a_single_account(self, enabled, operator) -> None:
+        assert "recommended minimum" in run("check")
+
+    def test_check_passes_with_two_validated_accounts(self, settings, operator) -> None:
+        # A network allowlist too: leaving it empty is legitimate but produces
+        # a warning, and a fully clean run is what this asserts.
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": [SINK],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8"],
+            }
+        }
+        spare = User.objects.create_user(username="spare", password="x")
+        BreakGlassAccount.objects.create(
+            user=spare, reason="second", last_validated_at=timezone.now()
+        )
+        BreakGlassAccount.objects.filter(user=operator).update(last_validated_at=timezone.now())
+        assert "all validated" in run("check")
+
+    def test_check_warns_about_an_open_network_allowlist(self, enabled, operator) -> None:
+        assert "reachable from anywhere" in run("check")
+
+    def test_grant_requires_a_reason(self, enabled) -> None:
+        User.objects.create_user(username="candidate", password="x")
+        with pytest.raises(CommandError, match="reason"):
+            run("grant", "--user", "candidate")
+
+    def test_grant_requires_a_usable_password(self, enabled) -> None:
+        user = User.objects.create_user(username="candidate")
+        user.set_unusable_password()
+        user.save()
+        with pytest.raises(CommandError, match="usable password"):
+            run("grant", "--user", "candidate", "--reason", "why")
+
+    def test_grant_creates_the_account_and_alerts(self, enabled) -> None:
+        User.objects.create_user(username="candidate", password="x")
+        run("grant", "--user", "candidate", "--reason", "incident response")
+        assert BreakGlassAccount.objects.filter(user__username="candidate").exists()
+        assert ALERTS
+
+    def test_revoke_refuses_the_last_account(self, enabled, operator) -> None:
+        with pytest.raises(LastBreakGlassAccount):
+            run("revoke", "--user", "firefighter")
+
+    def test_a_drill_records_validation_and_alerts(self, enabled, operator) -> None:
+        output = run("drill", "--user", "firefighter")
+        assert ALERTS, "a drill that does not confirm the alarm rings tests half of it"
+        assert BreakGlassAccount.objects.get(user=operator).last_validated_at
+        assert "Confirm before treating this as passed" in output
+
+    def test_list_shows_accounts(self, enabled, operator) -> None:
+        assert "firefighter" in run("list")

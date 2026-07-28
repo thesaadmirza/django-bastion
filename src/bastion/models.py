@@ -28,6 +28,7 @@ from bastion.audit.models import (  # noqa: F401  (import position is load-beari
     AuditChain,
     AuditEvent,
 )
+from bastion.breakglass.models import BreakGlassAccount  # noqa: F401
 
 
 class FederatedIdentityQuerySet(models.QuerySet["FederatedIdentity"]):
