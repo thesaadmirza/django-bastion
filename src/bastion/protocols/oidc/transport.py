@@ -117,6 +117,37 @@ class UrllibTransport:
             raise TransportError(f"GET {url} returned {status}")
         return self._decode(body, url)
 
+    def server_time(self, url: str) -> Any:
+        """Read the provider's clock from a ``Date`` response header.
+
+        Optional: the diagnostic command duck-types for it and skips the clock
+        check when a transport does not offer one. Kept off the ``Transport``
+        protocol for that reason -- a third-party transport should not have to
+        implement a method that exists for one command.
+
+        Worth having because clock skew produces the least informative failure
+        in the whole flow: a token that verifies perfectly and is then rejected
+        for being expired or not yet valid, on a system where every other check
+        passes.
+        """
+        import email.utils
+
+        require_https(url, what="request URL")
+        request = urllib.request.Request(  # noqa: S310
+            url, method="HEAD", headers={"User-Agent": self.user_agent}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
+                header = response.headers.get("Date")
+        except (urllib.error.URLError, TimeoutError, ValueError):
+            return None
+        if not header:
+            return None
+        try:
+            return email.utils.parsedate_to_datetime(header)
+        except (TypeError, ValueError):
+            return None
+
     def post_form(
         self,
         url: str,
