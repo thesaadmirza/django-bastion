@@ -38,13 +38,30 @@ and `django-privileged-access` all 404.
 
 > **This is not a protocol implementation. It is the governance layer above one.**
 
-Protocol crypto is delegated to `authlib`, `pysaml2`/`python3-saml`, and `python-ldap`. Our job is to
-assert their configuration, re-check their output structurally, and own everything that happens after an
-assertion validates.
+Protocol crypto is delegated. Our job is to assert its configuration, re-check its output structurally,
+and own everything that happens after an assertion validates.
 
 That division of labour is not a way of doing less work. §2.1 shows the CVE record of those libraries
 reduces to nine recurring failure shapes, and a wrapper that calls `lib.verify()` and trusts the boolean
 inherits all nine of them.
+
+**Where the boundary sits differs by protocol, and the reason is worth stating.**
+
+For **SAML and LDAP** it sits at the library level: `pysaml2`/`python3-saml` and `python-ldap`. XML
+canonicalization and signature verification are genuinely hard, the attack surface is enormous, and
+reimplementing them would be reckless.
+
+For **OIDC it sits one level lower, at `cryptography`**, revised during implementation. Every policy
+decision a JOSE library makes on our behalf is one we override anyway — we pin the algorithm allowlist,
+refuse key material from the header, resolve keys ourselves, and reject unknown `crit`. What remains
+delegated is encoding mechanics and the signature check. Meanwhile the CVE record for those libraries is
+concentrated in precisely that policy layer: fail-open verification on an unrecognised algorithm, trusting
+an embedded `jwk`, accepting `alg: none`, algorithm confusion. Wrapping a library while overriding all its
+policy inherits its fail-open bugs and none of its judgement.
+
+The encoding work this leaves us owning is about fifty lines — base64url padding, raw-to-DER for ECDSA,
+PSS parameters — and is well understood. `authlib` remains a declared extra for the token-endpoint client,
+where it does work we are not duplicating.
 
 ### 1.3 Non-goals
 
