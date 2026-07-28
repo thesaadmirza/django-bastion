@@ -38,20 +38,13 @@ SETTING_NAME = "BASTION"
 #: Code-level extension points and defaults only. Anything describing a
 #: *specific* identity provider belongs in the database.
 DEFAULTS: dict[str, Any] = {
-    "PIPELINE": [
-        "bastion.pipeline.normalize_identity",
-        "bastion.pipeline.verify_assertion",
-        "bastion.pipeline.resolve_user",
-        "bastion.pipeline.evaluate_mapping",
-        "bastion.pipeline.enforce_authorization",
-        "bastion.pipeline.provision_user",
-        "bastion.pipeline.reconcile_groups",
-        "bastion.pipeline.audit",
-    ],
-    "USER_RESOLVER": "bastion.resolvers.SubjectResolver",
-    "USER_PROVISIONER": "bastion.provisioning.DefaultProvisioner",
-    "GROUP_RECONCILER": "bastion.groups.ScopedReconciler",
-    "AUDIT_SINKS": ["bastion.audit.sinks.DatabaseSink"],
+    # The auth backend is the customisation seam for now. The ordered pipeline
+    # and the separate resolver/provisioner/reconciler protocols described in
+    # FOUNDATIONS.md 3.1 arrive with the rule engine; declaring their settings
+    # before they exist would mean shipping a config surface that does nothing,
+    # which is worse than not having one.
+    "BACKEND": "bastion.backends.SSOBackend",
+    "SUCCESS_URL": "/",
     "IDENTITY": {
         # (issuer, subject). Never email. mozilla-django-oidc defaults to
         # email__iexact, Django's User.email has no unique constraint, and an
@@ -61,13 +54,11 @@ DEFAULTS: dict[str, Any] = {
         "LINKING_POLICY": "subject_only",
         "REQUIRE_VERIFIED_EMAIL": True,
     },
+    # v0.1 maps groups to flags per connection via staff_groups and
+    # superuser_groups. The rule engine lands in v0.2 and takes this over.
     "MAPPING": {
         "STRICT": True,
-        "DEFAULT_SYNC_MODE": "every_login",
         "MANAGED_GROUPS": "prefix:sso-",
-        "EXPLAIN_IN_AUDIT": True,
-        "RULES": [],
-        "MANAGED": "db",
     },
     "ADMIN": {
         "enabled": True,
@@ -91,7 +82,7 @@ DEFAULTS: dict[str, Any] = {
 }
 
 #: Settings whose values are dotted paths and should be imported on access.
-IMPORT_STRINGS = frozenset({"USER_RESOLVER", "USER_PROVISIONER", "GROUP_RECONCILER"})
+IMPORT_STRINGS: frozenset[str] = frozenset()
 
 _cache: dict[str, Any] = {}
 
