@@ -8,7 +8,7 @@ to another person's and the next login lands in the wrong account.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.contrib import admin
 from django.http import HttpRequest
@@ -16,9 +16,20 @@ from django.http import HttpRequest
 from bastion.audit.models import AuditEvent
 from bastion.models import FederatedIdentity
 
+# django-stubs types ModelAdmin as generic, but the runtime class is not
+# subscriptable: `ModelAdmin[Model]` raises TypeError on import. django-stubs-ext
+# offers a monkeypatch for this, and requiring consumers to call it would be
+# rude for a library, so the parameterisation is confined to type-checking.
+if TYPE_CHECKING:
+    _IdentityAdmin = admin.ModelAdmin[FederatedIdentity]
+    _EventAdmin = admin.ModelAdmin[AuditEvent]
+else:
+    _IdentityAdmin = admin.ModelAdmin
+    _EventAdmin = admin.ModelAdmin
+
 
 @admin.register(FederatedIdentity)
-class FederatedIdentityAdmin(admin.ModelAdmin):
+class FederatedIdentityAdmin(_IdentityAdmin):
     list_display = ("subject", "issuer", "connection", "user", "last_seen_at")
     list_filter = ("connection", "subject_source")
     search_fields = ("subject", "issuer", "user__username", "user__email")
@@ -47,7 +58,7 @@ class FederatedIdentityAdmin(admin.ModelAdmin):
 
 
 @admin.register(AuditEvent)
-class AuditEventAdmin(admin.ModelAdmin):
+class AuditEventAdmin(_EventAdmin):
     """A reader for the audit log.
 
     Entirely read-only, including delete. Retention is the only route by which
