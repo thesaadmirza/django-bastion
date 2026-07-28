@@ -1,0 +1,155 @@
+"""Typed errors.
+
+Two rules about these.
+
+They are typed so the pipeline can tell an infrastructure failure from a
+credential failure and log the difference. They are **not** rendered to end
+users. Everything that reaches a browser goes through the three-tier error
+policy in FOUNDATIONS.md 9.3, where a pre-authentication failure produces one
+generic body and one status code regardless of which subclass was raised.
+Anything else is an account-enumeration oracle.
+
+None of these carry the token, the assertion, or the claim set. An exception
+that ends up in a log aggregator should not hand a bearer credential to
+whoever can read it.
+"""
+
+from __future__ import annotations
+
+
+class BastionError(Exception):
+    """Base for everything this package raises."""
+
+
+class ConfigurationError(BastionError):
+    """The deployment is wrong. Raised at startup wherever possible, so that
+    ``manage.py check --deploy`` catches it rather than a user at 3am."""
+
+
+# --------------------------------------------------------------------------- #
+# Token verification
+# --------------------------------------------------------------------------- #
+
+
+class TokenError(BastionError):
+    """A token was rejected. Never distinguish these to the caller."""
+
+
+class MalformedToken(TokenError):
+    """Not a well-formed compact serialisation."""
+
+
+class TokenTooLarge(TokenError):
+    """Exceeds the configured byte cap, checked before any parsing.
+
+    Guards the JOSE denial-of-service class: authlib CVE-2025-61920 and the
+    ``zip: DEF`` decompression bomb CVE-2025-62706 both start with a token
+    nobody bounded.
+    """
+
+
+class AlgorithmNotAllowed(TokenError):
+    """The header's ``alg`` is not in the allowlist.
+
+    Catches ``none`` and the whole HMAC family without either needing a special
+    case, which is the point of expressing the policy as an allowlist rather
+    than a denylist.
+    """
+
+
+class UntrustedKeyMaterial(TokenError):
+    """The header tried to supply its own key via ``jwk``, ``jku``, ``x5u`` or
+    ``x5c``.
+
+    authlib CVE-2026-27962, rated critical: a token carrying its own key
+    verifies against itself. The only defence is refusing to read key material
+    from the message.
+    """
+
+
+class UnsupportedCriticalHeader(TokenError):
+    """``crit`` names an extension we do not implement.
+
+    RFC 7515 says reject. A library that ignores ``crit`` accepts a token whose
+    semantics it does not understand (authlib CVE-2025-59420).
+    """
+
+
+class SignatureVerificationFailed(TokenError):
+    """The signature did not verify against the resolved key."""
+
+
+class KeyNotFound(TokenError):
+    """No key matched the ``kid``.
+
+    Deliberately an exception rather than a ``None`` return. Every fail-open
+    bug in this space looks like a resolver that returned nothing and a caller
+    that read nothing as "no signature required".
+    """
+
+
+# --------------------------------------------------------------------------- #
+# Claim validation
+# --------------------------------------------------------------------------- #
+
+
+class ClaimValidationError(TokenError):
+    """A claim failed validation. Subclasses exist for logging, not for
+    branching in a view."""
+
+
+class IssuerMismatch(ClaimValidationError):
+    """``iss`` is not an exact string match for the configured issuer."""
+
+
+class AudienceMismatch(ClaimValidationError):
+    """``aud`` does not contain our client id, or contains an untrusted extra
+    audience without a matching ``azp``."""
+
+
+class TokenExpired(ClaimValidationError):
+    pass
+
+
+class TokenNotYetValid(ClaimValidationError):
+    pass
+
+
+class NonceMismatch(ClaimValidationError):
+    """The nonce does not match the one bound to this browser transaction."""
+
+
+class SubjectMismatch(ClaimValidationError):
+    """UserInfo returned a different ``sub`` than the ID token.
+
+    OIDC Core 5.3.2 makes discarding the response a MUST here.
+    """
+
+
+class AccessTokenHashMismatch(ClaimValidationError):
+    """``at_hash`` did not match the access token we were handed."""
+
+
+# --------------------------------------------------------------------------- #
+# Discovery and key material
+# --------------------------------------------------------------------------- #
+
+
+class DiscoveryError(BastionError):
+    """The provider's metadata could not be fetched or is unusable."""
+
+
+class InsecureEndpoint(ConfigurationError):
+    """An endpoint URL used a scheme we refuse.
+
+    PyJWT's ``PyJWKClient`` accepted arbitrary schemes and turned a JWKS URI
+    into an SSRF primitive and a local-file read (CVE-2026-48522).
+    """
+
+
+class KeyFetchThrottled(BastionError):
+    """A key refetch was suppressed by the rate limiter.
+
+    An attacker who can post tokens carrying arbitrary ``kid`` values must not
+    be able to drive unbounded outbound requests (CVE-2026-48524).
+    """
