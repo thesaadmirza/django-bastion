@@ -58,9 +58,6 @@ ALLOWED_ALGORITHMS: frozenset[str] = frozenset(
 #: key used to verify it.
 FORBIDDEN_HEADER_PARAMS: frozenset[str] = frozenset({"jwk", "jku", "x5u", "x5c"})
 
-#: We implement no ``crit`` extensions, so any value is unsupported.
-SUPPORTED_CRITICAL_HEADERS: frozenset[str] = frozenset()
-
 #: Checked before parsing. A generous ID token is a few kilobytes; anything
 #: near this is either a bug or an attempt at resource exhaustion.
 MAX_TOKEN_BYTES = 16 * 1024
@@ -146,9 +143,13 @@ def _check_header_policy(header: Mapping[str, Any], allowed: frozenset[str]) -> 
     if crit is not None:
         if not isinstance(crit, list) or not all(isinstance(c, str) for c in crit):
             raise MalformedToken("crit must be a list of strings")
-        unsupported = set(crit) - SUPPORTED_CRITICAL_HEADERS
-        if unsupported:
-            raise UnsupportedCriticalHeader(f"unsupported critical headers: {sorted(unsupported)}")
+        if not crit:
+            # RFC 7515 4.1.11: producers must not emit an empty list, and a
+            # recipient that sees one is looking at an invalid JWS.
+            raise MalformedToken("crit must not be empty")
+        # We implement no crit extensions. RFC 7515 requires rejecting any
+        # header listed here that we do not understand, which is all of them.
+        raise UnsupportedCriticalHeader(f"unsupported critical headers: {sorted(crit)}")
 
     return alg
 

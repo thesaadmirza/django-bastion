@@ -164,6 +164,16 @@ class TestCriticalHeaders:
         with pytest.raises(MalformedToken):
             verify_compact(token, key_resolver=resolver)
 
+    def test_empty_crit_is_rejected(
+        self, idp: FakeIdP, signing_key: SigningKey, resolver: RecordingResolver
+    ) -> None:
+        """RFC 7515 4.1.11 forbids an empty list, so it is a broken producer
+        rather than a token with no extensions to honour."""
+        header = {"alg": "RS256", "kid": signing_key.kid, "crit": []}
+        token = tokens.sign(header, idp.base_claims(), signing_key)
+        with pytest.raises(MalformedToken, match="empty"):
+            verify_compact(token, key_resolver=resolver)
+
 
 class TestSignature:
     def test_tampered_payload_is_rejected(self, idp: FakeIdP, resolver: RecordingResolver) -> None:
