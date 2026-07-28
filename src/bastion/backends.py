@@ -29,6 +29,8 @@ from django.db import transaction
 from django.http import HttpRequest
 from django.utils import timezone
 
+from bastion.audit import emit
+from bastion.audit.events import Event, Outcome, Severity
 from bastion.claims import IdentityClaims
 from bastion.connections import Connection
 from bastion.models import FederatedIdentity
@@ -90,8 +92,39 @@ class SSOBackend(BaseBackend):
                 subject_source=claims.subject_source,
                 connection=connection.identifier,
             )
+            emit(
+                Event.USER_PROVISIONED,
+                actor=user,
+                connection=connection.identifier,
+                issuer=claims.issuer,
+                subject=claims.subject,
+                target_type="user",
+                target_id=str(user.pk),
+            )
+            emit(
+                Event.IDENTITY_LINKED,
+                actor=user,
+                connection=connection.identifier,
+                issuer=claims.issuer,
+                subject=claims.subject,
+                context={"subject_source": claims.subject_source},
+            )
         else:
             if identity.subject_source_changed(claims.subject_source):
+                emit(
+                    Event.IDENTITY_SOURCE_CONFLICT,
+                    outcome=Outcome.DENIED,
+                    severity=Severity.CRITICAL,
+                    connection=connection.identifier,
+                    issuer=claims.issuer,
+                    subject=claims.subject,
+                    changes={
+                        "subject_source": {
+                            "from": identity.subject_source,
+                            "to": claims.subject_source,
+                        }
+                    },
+                )
                 # Same string, different claim. Almost always a configuration
                 # change rather than the same person, and silently accepting it
                 # means the next person to use that value inherits an account.
@@ -178,13 +211,39 @@ class SSOBackend(BaseBackend):
                 claims.subject,
                 claims.group_value_format.value,
             )
+            emit(
+                Event.MAPPING_INCOMPLETE,
+                outcome=Outcome.DENIED,
+                severity=Severity.WARNING,
+                connection=connection.identifier,
+                issuer=claims.issuer,
+                subject=claims.subject,
+                context={"group_format": claims.group_value_format.value},
+            )
             return set()
 
         touched: set[str] = set()
+        changes: dict[str, dict[str, Any]] = {}
         for field, value in connection.flags_for(claims.groups).items():
-            if getattr(user, field, None) != value:
+            current = getattr(user, field, None)
+            if current != value:
                 setattr(user, field, value)
                 touched.add(field)
+                changes[field] = {"from": current, "to": value}
+
+        if changes:
+            emit(
+                Event.ROLE_GRANTED
+                if any(c["to"] for c in changes.values())
+                else Event.ROLE_REVOKED,
+                actor=user if user.pk else None,
+                connection=connection.identifier,
+                issuer=claims.issuer,
+                subject=claims.subject,
+                changes=changes,
+                is_privileged=True,
+                severity=Severity.NOTICE,
+            )
         return touched
 
 

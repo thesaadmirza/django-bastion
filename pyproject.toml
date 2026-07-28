@@ -119,6 +119,7 @@ ignore = [
 # RUF012 wants ClassVar on mutable class attributes. Django's Meta inner class
 # is exactly that by design, and annotating it breaks the ORM's introspection.
 "src/bastion/models.py" = ["RUF012"]
+"src/bastion/audit/models.py" = ["RUF012"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["bastion", "tests"]

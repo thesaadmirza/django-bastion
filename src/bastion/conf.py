@@ -75,8 +75,17 @@ DEFAULTS: dict[str, Any] = {
         "ALERT_SINKS": [],
     },
     "AUDIT": {
+        "SINKS": ["bastion.audit.sinks.DatabaseSink"],
+        # CNIL's logging recommendation is the only regulator text that puts a
+        # number on this: six months to a year as standard, up to three years
+        # where a documented internal-control need exists. PCI requires twelve
+        # months with three immediately available; FedRAMP one year with ninety
+        # days online. HIPAA sets nothing, contrary to widespread belief -- its
+        # six-year rule covers required documentation, not application logs.
+        #
+        # Twelve months satisfies every regime that names a number. It is a
+        # default, not a requirement, and the docs say so.
         "RETENTION_DAYS": 365,
-        "HASH_CHAIN": True,
     },
     "CONNECTIONS": {},
 }
@@ -166,3 +175,6 @@ def _reset_cache(*, setting: str, **kwargs: Any) -> None:
     """
     if setting == SETTING_NAME:
         _cache.clear()
+        from bastion.audit.recorder import reset_sinks
+
+        reset_sinks()

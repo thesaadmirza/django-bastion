@@ -18,6 +18,17 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+# Django's AppConfig imports only `<app>/models.py`, so models declared
+# elsewhere in the package are never registered unless something pulls them in.
+# Re-exported here rather than moved, because the audit tables belong with the
+# rest of the audit code and splitting them for the sake of the loader would be
+# the loader dictating the layout.
+from bastion.audit.models import (  # noqa: F401  (import position is load-bearing)
+    AuditActor,
+    AuditChain,
+    AuditEvent,
+)
+
 
 class FederatedIdentityQuerySet(models.QuerySet["FederatedIdentity"]):
     def for_claims(self, issuer: str, subject: str) -> FederatedIdentityQuerySet:

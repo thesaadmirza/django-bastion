@@ -19,9 +19,11 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from bastion.audit import emit
+from bastion.audit.events import Event, Outcome, Severity
 from bastion.conf import get_setting
 from bastion.connections import Connection, get_connection
-from bastion.exceptions import BastionError, ConfigurationError
+from bastion.exceptions import BastionError, ConfigurationError, TokenError
 from bastion.flows import begin_login, complete_login, correlation_id
 
 logger = logging.getLogger(__name__)
@@ -99,12 +101,24 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
     try:
         result = complete_login(request, resolved)
     except BastionError as exc:
-        # The specific reason goes to the log, never to the page.
+        # The specific reason goes to the log and the audit record, never to
+        # the page. Audit writes are not conditional on success: a failed login
+        # is the event most worth having.
         logger.warning(
             "Login failed on %s [ref %s]: %s",
             resolved.identifier,
             reference,
             type(exc).__name__,
+        )
+        emit(
+            Event.ASSERTION_REJECTED if isinstance(exc, TokenError) else Event.LOGIN_FAILED,
+            outcome=Outcome.FAILURE,
+            request=request,
+            severity=Severity.WARNING,
+            connection=resolved.identifier,
+            issuer=resolved.issuer,
+            correlation_id=reference,
+            context={"error": type(exc).__name__},
         )
         return _failure(request, reference)
 
@@ -117,14 +131,52 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
             result.identity.subject,
             reference,
         )
+        emit(
+            Event.LOGIN_DENIED,
+            outcome=Outcome.DENIED,
+            request=request,
+            severity=Severity.WARNING,
+            connection=resolved.identifier,
+            issuer=result.identity.issuer,
+            subject=result.identity.subject,
+            correlation_id=reference,
+            context={"reason": "identity could not be resolved to a user"},
+        )
         return _failure(request, reference, status=403)
 
     if resolved.require_group_match and not _has_any_privilege(user, resolved):
         # Post-authentication. Identity is proven, so there is no enumeration
         # risk and the page can say something useful.
+        emit(
+            Event.LOGIN_DENIED,
+            outcome=Outcome.DENIED,
+            actor=user,
+            request=request,
+            severity=Severity.NOTICE,
+            connection=resolved.identifier,
+            issuer=result.identity.issuer,
+            subject=result.identity.subject,
+            correlation_id=reference,
+            context={"reason": "no configured group matched"},
+        )
         return _denied(request, user, resolved, reference)
 
     _establish_session(request, user)
+
+    emit(
+        Event.LOGIN_SUCCEEDED,
+        outcome=Outcome.SUCCESS,
+        actor=user,
+        request=request,
+        connection=resolved.identifier,
+        issuer=result.identity.issuer,
+        subject=result.identity.subject,
+        auth_protocol="oidc",
+        auth_methods=list(result.identity.raw.get("amr", []) or []),
+        correlation_id=reference,
+        is_privileged=bool(getattr(user, "is_staff", False)),
+        context={"mfa_satisfied": result.identity.mfa_satisfied},
+    )
 
     destination = result.transaction.redirect_to or DEFAULT_SUCCESS_URL
     response = HttpResponseRedirect(destination)
