@@ -4,9 +4,8 @@ Enterprise SSO and identity governance for Django. Puts the admin behind your id
 claims to roles as reviewable data rather than code, records an audit trail, and gives you a fire escape
 for when the IdP is down.
 
-> **Status: pre-alpha.** Nothing works yet. This README describes the target API, and it is a design
-> contract: if the quickstart below stops fitting on one screen, the design has gone wrong. See
-> [FOUNDATIONS.md](FOUNDATIONS.md) for the decision record behind it.
+> **Status: pre-alpha.** Nothing is published yet. This README describes the target API, and it is a
+> design contract: if the quickstart below stops fitting on one screen, the design has gone wrong.
 
 ## Quickstart
 

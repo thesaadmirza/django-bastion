@@ -27,8 +27,8 @@ LINK = re.compile(r"(?<!\!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 def markdown_files() -> list[Path]:
     files = sorted(DOCS.rglob("*.md"))
-    files += [ROOT / "README.md", ROOT / "FOUNDATIONS.md", ROOT / "SECURITY.md"]
-    files += [ROOT / "GOVERNANCE.md", ROOT / "SUPPORT_MATRIX.md"]
+    files += [ROOT / "README.md", ROOT / "SECURITY.md", ROOT / "CHANGELOG.md"]
+    files += [ROOT / "GOVERNANCE.md", ROOT / "SUPPORT_MATRIX.md", ROOT / "MAINTAINERS.md"]
     return [f for f in files if f.exists()]
 
 

@@ -9,8 +9,8 @@ Licensed under the Apache License, Version 2.0. See LICENSE.
 
 Design and implementation of this package draws on prior art in the Django
 ecosystem, read at source. Where a mechanism was adopted rather than invented,
-it is credited in FOUNDATIONS.md and in the docstring of the module that uses
-it. In particular:
+it is credited here and in the docstring of the module that uses it. In
+particular:
 
   - The `dynamic_setting` descriptor in bastion/conf.py follows the pattern
     established by mozilla-django-oidc-db (Maykin Media, BSD-3-Clause).

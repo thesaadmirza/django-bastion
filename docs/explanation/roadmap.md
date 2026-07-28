@@ -26,9 +26,11 @@ predicate tree over normalised claims, with:
 - **Managed-group scoping**, so reconciliation never touches a locally created
   group
 
-The design is settled in [FOUNDATIONS.md](../../FOUNDATIONS.md) §4, including
-why arbitrary Python in the database and JMESPath-as-primary-language were both
-rejected.
+The design is settled. Two approaches were considered and rejected: arbitrary
+Python stored in the database, which makes the mapping rules a remote code
+execution surface administered through a web form, and JMESPath as the primary
+language, which reads well for extraction but cannot express the precedence
+rules that group-to-role mapping needs.
 
 ## v0.3 — SAML
 

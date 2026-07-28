@@ -53,8 +53,7 @@ Task-oriented. Assume you know what you are doing.
 Background and design reasoning.
 
 - [Why you might not want this](explanation/why-you-might-not-want-this.md)
-- [FOUNDATIONS.md](../FOUNDATIONS.md) — the full decision record, including the
-  research each decision came from and what is still open
+- [Roadmap](explanation/roadmap.md) — what is deliberately not built yet, and why
 
 ## Reporting a vulnerability
 

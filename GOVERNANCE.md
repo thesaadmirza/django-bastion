@@ -16,8 +16,9 @@ commit and release rights, from a different organisation, before 1.0. Progress i
 ## Who decides what
 
 Until there is a second maintainer, decisions are made by the maintainer, in public, on the issue tracker.
-Design decisions of any significance go in [FOUNDATIONS.md](FOUNDATIONS.md) with the reasoning and the
-sources, so that a future maintainer can tell what was decided deliberately and what was an accident.
+Design decisions of any significance are recorded on the issue that produced them, with the reasoning
+and the sources, and the reasoning is repeated in the code it governs. A future maintainer should be
+able to tell what was decided deliberately and what was an accident without leaving the file.
 
 When there is a second maintainer:
 

@@ -45,8 +45,8 @@ a library we configure, and some belong to whoever deploys us. Each one says whi
 
 ## Threats, by boundary
 
-The complete enumeration lives in [FOUNDATIONS.md](../../FOUNDATIONS.md) §2, with 37 numbered invariants
-and the adversarial test corpus that proves each one. This page summarises the shape.
+Each threat below is backed by a test in the adversarial corpus under `tests/`, which mints the malformed
+token or forged request directly rather than relying on a library to refuse to build one.
 
 ### Browser to app
 
@@ -100,8 +100,9 @@ change your position.
   under different administrative control.
 - **Local privilege escalation, container escape, or host compromise.**
 - **Denial of service** beyond the input size and depth caps we document.
-- **The security of the IdP's own login page.** It is third-party content. This has an accessibility
-  consequence too, covered in FOUNDATIONS.md §9.2.
+- **The security of the IdP's own login page.** It is third-party content. It has an accessibility
+  consequence too: WCAG Conformance Requirement 3 pulls any page in the process into the conformance
+  claim, so an inaccessible provider login page is a barrier we cannot fix and must instead document.
 - **Clock accuracy.** We record both `occurred_at` and `recorded_at` so skew is visible, but NTP is yours.
 - **Application-level authorization beyond role assignment.** We decide who is staff. What staff can do is
   Django's permission system and your code.
