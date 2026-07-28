@@ -145,7 +145,10 @@ strict_equality = true
 
 # Zone 1: the pure-Python security core. No Django dynamism, no excuse.
 [[tool.mypy.overrides]]
-module = ["bastion.rules.*", "bastion.claims.*", "bastion.protocols.*", "bastion.audit.*"]
+# The pure-Python security core. `bastion.rules.*` joins this list when the
+# rule engine lands; listing a module that does not exist makes mypy warn about
+# an unused section, so it is added with the code rather than ahead of it.
+module = ["bastion.claims.*", "bastion.protocols.*", "bastion.audit.*"]
 strict = true
 
 # Zone 2: models, admin, migrations. Relaxed because Django's descriptors defeat
