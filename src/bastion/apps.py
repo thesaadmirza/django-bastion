@@ -22,3 +22,25 @@ class BastionConfig(AppConfig):
         # Importing registers the system checks. Anything verifiable without a
         # request is verified at startup, not at first login.
         from bastion import checks  # noqa: F401
+
+        self._register_admin()
+
+    @staticmethod
+    def _register_admin() -> None:
+        """Register the identity ModelAdmin, if the admin is installed.
+
+        Done here rather than from ``bastion/admin/__init__.py``, which is the
+        module Django's autodiscover would normally use. That package is
+        imported early -- ``bastion.admin.apps.BastionAdminConfig`` appears in
+        INSTALLED_APPS, and importing a submodule imports its parent -- so
+        anything in its ``__init__`` runs before the app registry is populated
+        and touching a model there raises AppRegistryNotReady.
+
+        ``ready()`` runs after the registry is populated, which makes this the
+        correct place and the import order the reason.
+        """
+        from django.apps import apps
+
+        if not apps.is_installed("django.contrib.admin"):
+            return
+        from bastion.admin import models  # noqa: F401
