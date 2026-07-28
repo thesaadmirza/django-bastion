@@ -23,10 +23,11 @@ import datetime as dt
 import hashlib
 import json
 import secrets
+import time
 from typing import Any, NoReturn
 
 from django.conf import settings
-from django.db import models, transaction
+from django.db import OperationalError, models, transaction
 from django.utils import timezone
 
 from bastion.audit.events import Event, Outcome, Severity
@@ -69,6 +70,44 @@ class AuditActor(models.Model):
             user=user, defaults={"pseudonym": secrets.token_urlsafe(24)}
         )
         return actor
+
+
+#: How many times an append may be reissued after the server aborted it to
+#: break a deadlock. Small on purpose: contention here is short-lived, and a
+#: long retry loop holding a request thread is its own availability problem.
+_APPEND_ATTEMPTS = 4
+
+#: Base delay, doubled each attempt. Without a pause the retry re-enters the
+#: same contention it just lost.
+_APPEND_BACKOFF = 0.02
+
+#: Server-side codes meaning "you lost a lock race, try again", as opposed to
+#: anything else OperationalError covers. Matching on these rather than
+#: retrying every OperationalError keeps a genuinely broken connection or a
+#: full disk from being retried three times before it is reported.
+#:
+#: MySQL 1213 deadlock, 1205 lock wait timeout. PostgreSQL 40001 serialization
+#: failure, 40P01 deadlock detected.
+_MYSQL_LOCK_ERRORS = frozenset({1205, 1213})
+_POSTGRES_LOCK_STATES = frozenset({"40001", "40P01"})
+
+
+def _is_lock_contention(exc: OperationalError) -> bool:
+    """Whether the server aborted this transaction over a lock, not a fault."""
+    cause = exc.__cause__ or exc
+
+    sqlstate = getattr(cause, "sqlstate", None)
+    if sqlstate in _POSTGRES_LOCK_STATES:
+        return True
+
+    args = getattr(cause, "args", ())
+    if args and isinstance(args[0], int) and args[0] in _MYSQL_LOCK_ERRORS:
+        return True
+
+    # psycopg exposes the state under a different attribute depending on
+    # version, so fall back to it before giving up.
+    diag = getattr(cause, "diag", None)
+    return getattr(diag, "sqlstate", None) in _POSTGRES_LOCK_STATES
 
 
 class AuditEventQuerySet(models.QuerySet["AuditEvent"]):
@@ -229,9 +268,48 @@ class AuditChain(models.Model):
         return f"{self.name}@{self.last_seq}"
 
     @classmethod
-    @transaction.atomic
     def append(cls, event: AuditEvent) -> AuditEvent:
-        """Assign the next sequence number and link the hash."""
+        """Assign the next sequence number and link the hash, retrying on
+        lock contention.
+
+        Both MySQL and PostgreSQL document that an application must be prepared
+        to reissue a transaction that the server aborted to break a deadlock,
+        and on MySQL this is not hypothetical: InnoDB under REPEATABLE READ
+        takes gap locks around the ``select_for_update`` here, so concurrent
+        first-writes to a chain deadlock reliably.
+
+        Retrying matters more than it looks. ``emit`` catches everything a sink
+        raises so that a sink can never fail a login, which means an
+        unretried deadlock does not surface as an error -- it silently drops the
+        record. The sequence number was assigned inside the transaction that
+        rolled back, so no gap appears either, and ``verify_chain`` still passes
+        over a log that is missing entries.
+
+        Caveat: if the caller has already opened an atomic block, the outer
+        transaction is broken by the deadlock and no retry can succeed. The
+        exception propagates in that case, which is correct -- the caller's
+        transaction has to be the thing that restarts.
+        """
+        last: OperationalError | None = None
+        for attempt in range(_APPEND_ATTEMPTS):
+            try:
+                return cls._append_once(event)
+            except OperationalError as exc:
+                if not _is_lock_contention(exc):
+                    raise
+                last = exc
+                # Fresh instance state: the failed save left a primary key on
+                # the event, and reusing it would turn the retry into an UPDATE
+                # of a row that no longer exists.
+                event.pk = None
+                event._state.adding = True
+                if attempt < _APPEND_ATTEMPTS - 1:
+                    time.sleep(_APPEND_BACKOFF * (2**attempt))
+        raise last  # type: ignore[misc]
+
+    @classmethod
+    @transaction.atomic
+    def _append_once(cls, event: AuditEvent) -> AuditEvent:
         head, _ = cls.objects.select_for_update().get_or_create(name=event.chain)
         event.chain_seq = head.last_seq + 1
         event.prev_hash = head.last_hash
