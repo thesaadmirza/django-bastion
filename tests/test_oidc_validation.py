@@ -152,6 +152,14 @@ class TestTimeWindow:
         with pytest.raises(ClaimValidationError):
             validate(claims)
 
+    def test_an_out_of_range_timestamp_is_rejected(self, claims: dict[str, Any]) -> None:
+        """Numeric but unrepresentable. fromtimestamp raises OverflowError or
+        OSError depending on the platform, and letting either escape turns a
+        malformed token into a 500 on a request an attacker controls."""
+        claims["exp"] = 1e300
+        with pytest.raises(ClaimValidationError, match="out of range"):
+            validate(claims)
+
 
 class TestSkewPolicy:
     def test_skew_above_the_ceiling_is_a_configuration_error(self) -> None:
