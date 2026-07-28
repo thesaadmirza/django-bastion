@@ -60,11 +60,11 @@ ldap = ["django-auth-ldap>=4.8", "python-ldap>=3.4.5"]
 scim = []
 
 [project.urls]
-Homepage = "https://github.com/OWNER/django-bastion"
+Homepage = "https://github.com/thesaadmirza/django-bastion"
 Documentation = "https://django-bastion.readthedocs.io"
-Changelog = "https://github.com/OWNER/django-bastion/blob/main/CHANGELOG.md"
-Issues = "https://github.com/OWNER/django-bastion/issues"
-Security = "https://github.com/OWNER/django-bastion/blob/main/SECURITY.md"
+Changelog = "https://github.com/thesaadmirza/django-bastion/blob/main/CHANGELOG.md"
+Issues = "https://github.com/thesaadmirza/django-bastion/issues"
+Security = "https://github.com/thesaadmirza/django-bastion/blob/main/SECURITY.md"
 
 [dependency-groups]
 dev = [

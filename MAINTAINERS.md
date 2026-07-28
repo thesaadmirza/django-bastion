@@ -2,7 +2,7 @@
 
 | Name | GitHub | Areas | Key fingerprint |
 |---|---|---|---|
-| Saad Mirza | `@OWNER` | everything | not yet published |
+| Saad Mirza | [@thesaadmirza](https://github.com/thesaadmirza) | everything | not yet published |
 
 Release tags are signed. Until a fingerprint appears above, treat tag signatures
 as unverified — an unverifiable signature is worse than none, because it invites
