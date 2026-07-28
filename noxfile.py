@@ -12,6 +12,8 @@ newest supported Django, which is where backend divergence shows up.
 
 from __future__ import annotations
 
+import glob
+
 import nox
 
 nox.options.default_venv_backend = "uv|virtualenv"
@@ -119,14 +121,20 @@ def audit(session: nox.Session) -> None:
 
 @nox.session(python=PYTHONS[-1])
 def wheel_sanity(session: nox.Session) -> None:
-    """Build, install into a clean environment, and prove py.typed survived."""
-    session.install("build", "hatchling")
-    session.run("python", "-m", "build", "--wheel", "--outdir", "dist")
-    session.install("--force-reinstall", "--no-deps", *session.posargs or ["dist/*.whl"])
-    session.run(
-        "python",
-        "-c",
-        "import importlib.resources as r, bastion;"
-        "assert (r.files('bastion') / 'py.typed').is_file(), 'py.typed missing from wheel';"
-        "print('py.typed present, version', bastion.__version__)",
-    )
+    """Build the wheel and exercise it as an installed package.
+
+    Installs *with* dependency resolution, on purpose. The previous version
+    passed --no-deps, which meant the declared dependency set was never
+    exercised and a base install that could not run `manage.py check` went
+    unnoticed. The point of this session is to be the one place we find out
+    what `pip install django-bastion` actually gives someone.
+    """
+    session.install("build", "hatchling", "twine")
+    session.run("python", "-m", "build", "--outdir", "dist")
+
+    # Metadata has to be valid before PyPI will take it, and --strict turns
+    # README rendering warnings into failures.
+    session.run("twine", "check", "--strict", *glob.glob("dist/*"))
+
+    session.install("--force-reinstall", *session.posargs or glob.glob("dist/*.whl"))
+    session.run("python", "tests/smoke_installed.py")
