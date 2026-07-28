@@ -28,11 +28,23 @@ from bastion.protocols.oidc.jose import (
     verify_compact,
 )
 from bastion.protocols.oidc.jwks import JWKSStore
+from bastion.protocols.oidc.quirks import REGISTRY, ProviderQuirks, to_identity_claims
+from bastion.protocols.oidc.validation import (
+    ValidationPolicy,
+    validate_id_token,
+    validate_userinfo,
+)
 
 __all__ = [
     "ALLOWED_ALGORITHMS",
+    "REGISTRY",
     "JWKSStore",
+    "ProviderQuirks",
+    "ValidationPolicy",
     "VerifiedToken",
     "parse_header",
+    "to_identity_claims",
+    "validate_id_token",
+    "validate_userinfo",
     "verify_compact",
 ]
