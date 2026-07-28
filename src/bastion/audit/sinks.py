@@ -8,6 +8,7 @@ available, and it is not this module -- it is the sink you point at your SIEM.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 from typing import Any, Protocol
@@ -70,7 +71,7 @@ class LoggingSink:
     def record(self, payload: dict[str, Any]) -> None:
         serialisable = dict(payload)
         occurred = serialisable.get("occurred_at")
-        if hasattr(occurred, "isoformat"):
+        if isinstance(occurred, dt.datetime):
             serialisable["occurred_at"] = occurred.isoformat()
         serialisable["event_type"] = str(serialisable.get("event_type", ""))
         serialisable["outcome"] = str(serialisable.get("outcome", ""))
