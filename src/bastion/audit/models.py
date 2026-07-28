@@ -23,7 +23,7 @@ import datetime as dt
 import hashlib
 import json
 import secrets
-from typing import Any
+from typing import Any, NoReturn
 
 from django.conf import settings
 from django.db import models, transaction
@@ -161,7 +161,7 @@ class AuditEvent(models.Model):
             )
         super().save(*args, **kwargs)
 
-    def delete(self, *args: Any, **kwargs: Any) -> None:
+    def delete(self, *args: Any, **kwargs: Any) -> NoReturn:
         raise AppendOnly(
             "Audit events cannot be deleted individually. Use the retention "
             "policy, which records what it removed."

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Any
 
 from django.conf import settings
@@ -19,7 +20,9 @@ class BreakGlassAccountQuerySet(models.QuerySet["BreakGlassAccount"]):
         Microsoft's guidance is 90 days, and on staff change. An emergency
         account nobody has tried is an emergency account nobody knows works.
         """
-        cutoff = timezone.now() - timezone.timedelta(days=days)
+        # datetime.timedelta rather than timezone.timedelta: the latter works
+        # but is an undocumented re-export Django is free to drop.
+        cutoff = timezone.now() - dt.timedelta(days=days)
         return self.active().filter(
             models.Q(last_validated_at__isnull=True) | models.Q(last_validated_at__lt=cutoff)
         )
@@ -64,7 +67,7 @@ class BreakGlassAccount(models.Model):
     def __str__(self) -> str:
         return f"break-glass: {self.user}"
 
-    def delete(self, *args: Any, **kwargs: Any) -> None:
+    def delete(self, *args: Any, **kwargs: Any) -> tuple[int, dict[str, int]]:
         """Refuse to remove the last active account.
 
         Deleting your way to zero is a thing people do while tidying up, and
@@ -76,7 +79,7 @@ class BreakGlassAccount(models.Model):
                 "before removing it, or the next provider outage locks everyone "
                 "out permanently."
             )
-        super().delete(*args, **kwargs)
+        return super().delete(*args, **kwargs)
 
 
 class LastBreakGlassAccount(Exception):
