@@ -1,0 +1,102 @@
+{% load i18n %}<!--
+  The opposite policy to login_failed.html, and deliberately so.
+
+  Identity is already proven here, so there is no account to enumerate and no
+  reason to be vague. Being vague at this point is the single most common
+  usability failure in enterprise SSO: the person is told "access denied" and
+  has no idea which account they used, which group they are missing, or who to
+  ask. All three are on this page.
+
+  Deployments that consider group names sensitive can substitute a generic
+  phrase, but the specific version is the default, because the generic one is
+  unusable.
+
+  Sign-out is a POST. Django's LogoutView is POST-only, so an <a href> to it is
+  a dead link.
+-->
+<!doctype html>
+<html lang="{{ LANGUAGE_CODE|default:'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% translate "Access denied" %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0;
+           padding: 2rem 1rem; color: #1b1b1b; background: #fff; }
+    main { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.75rem; margin-top: 0; }
+    dl { margin: 1.5rem 0; }
+    dt { font-weight: 600; margin-top: 0.75rem; }
+    dd { margin: 0.25rem 0 0; }
+    code, .reference { font-family: ui-monospace, monospace;
+                       background: #f3f2f1; padding: 0.15rem 0.4rem;
+                       border: 1px solid #b1b4b6; }
+    button { font: inherit; padding: 0.5rem 1rem; cursor: pointer;
+             min-height: 44px; }
+    a { color: #1d70b8; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #f3f2f1; background: #101010; }
+      code, .reference { background: #2b2b2b; border-color: #6f777b; }
+      a { color: #85b7e8; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 tabindex="-1">{% translate "You are signed in, but you do not have access" %}</h1>
+
+    <p>
+      {% blocktranslate trimmed %}
+        Your sign-in worked. This account does not have permission to use this
+        site.
+      {% endblocktranslate %}
+    </p>
+
+    <dl>
+      <dt>{% translate "You signed in as" %}</dt>
+      <dd><code>{{ identity }}</code></dd>
+
+      {% if required_groups %}
+        <dt>{% translate "Access requires membership of" %}</dt>
+        <dd>
+          {% for group in required_groups %}
+            <code>{{ group }}</code>{% if not forloop.last %}, {% endif %}
+          {% endfor %}
+        </dd>
+      {% endif %}
+
+      <dt>{% translate "Reference" %}</dt>
+      <dd><span class="reference">{{ reference }}</span></dd>
+    </dl>
+
+    <h2>{% translate "What to do next" %}</h2>
+    <p>
+      {% if required_groups %}
+        {% blocktranslate trimmed %}
+          Ask your IT service desk to add this account to the group listed
+          above. Include the reference so they can find this sign-in.
+        {% endblocktranslate %}
+      {% else %}
+        {% blocktranslate trimmed %}
+          Ask your IT service desk to grant this account access. Include the
+          reference so they can find this sign-in.
+        {% endblocktranslate %}
+      {% endif %}
+    </p>
+
+    <p>
+      {% blocktranslate trimmed %}
+        If you have a different work account that should have access, sign out
+        and try that one.
+      {% endblocktranslate %}
+    </p>
+
+    {% if logout_url %}
+      <form method="post" action="{{ logout_url }}">
+        {% csrf_token %}
+        <button type="submit">{% translate "Sign out" %}</button>
+      </form>
+    {% endif %}
+  </main>
+</body>
+</html>

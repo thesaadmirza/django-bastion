@@ -1,7 +1,9 @@
-"""URLconf for the test project. Grows as views land."""
+"""URLconf for the test project."""
 
 from __future__ import annotations
 
-from django.urls import path
+from django.urls import include, path
 
-urlpatterns: list[path] = []
+urlpatterns = [
+    path("sso/", include("bastion.urls")),
+]
