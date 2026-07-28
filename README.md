@@ -134,8 +134,17 @@ needs system packages. The common case does not need it.
 
 ## Documentation
 
-Not published yet. When it is: [threat model](docs/security/threat-model.md) and the deployment checklist
-first if you are evaluating, per-IdP cookbooks if you are integrating.
+Not published to a site yet, but written and in the repository. Start at
+[docs/index.md](docs/index.md).
+
+If you are evaluating rather than building, read these four in order:
+[threat model](docs/security/threat-model.md),
+[why you might not want this](docs/explanation/why-you-might-not-want-this.md),
+[data inventory](docs/security/data-inventory.md), and the
+[deployment checklist](docs/security/deployment-checklist.md).
+
+If you are integrating, [your first login](docs/tutorials/first-login.md) then
+the [Entra guide](docs/how-to/idp/entra.md).
 
 ## Security
 
