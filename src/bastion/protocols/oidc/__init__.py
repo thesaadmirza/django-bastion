@@ -1,0 +1,38 @@
+"""OpenID Connect relying party.
+
+The delegation boundary here sits at the *primitive* level rather than the JOSE
+level, which is a deliberate departure from the first draft of FOUNDATIONS.md
+1.2. The reasoning:
+
+Every policy decision a JOSE library makes on our behalf is one we override
+anyway. We pin the algorithm allowlist, we refuse key material from the header,
+we resolve keys ourselves, and we reject unknown ``crit``. What would remain
+delegated is the encoding mechanics and the signature check itself.
+
+Meanwhile the CVE record for those libraries is concentrated in exactly that
+policy layer: fail-open verification on an unrecognised algorithm, trusting an
+embedded ``jwk``, accepting ``alg: none``, algorithm confusion. Wrapping a
+library while overriding all of its policy inherits its fail-open bugs without
+inheriting any of its judgement.
+
+So signature verification calls ``cryptography`` directly, which is the same
+primitive library authlib and PyJWT both sit on. The encoding work this leaves
+us owning is roughly fifty lines and is well understood: base64url padding,
+raw-to-DER conversion for ECDSA, and PSS parameters.
+"""
+
+from bastion.protocols.oidc.jose import (
+    ALLOWED_ALGORITHMS,
+    VerifiedToken,
+    parse_header,
+    verify_compact,
+)
+from bastion.protocols.oidc.jwks import JWKSStore
+
+__all__ = [
+    "ALLOWED_ALGORITHMS",
+    "JWKSStore",
+    "VerifiedToken",
+    "parse_header",
+    "verify_compact",
+]
