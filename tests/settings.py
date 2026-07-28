@@ -7,7 +7,17 @@ import os
 # Long enough to satisfy security.W009. Still not a secret; this is the suite.
 SECRET_KEY = "wQ7k2LpZ9vXn4RtY8mHbF3sJdA6cE1gU5oI0yTqNxVwPzKrMlBhGjSfDaCeZ"
 DEBUG = False
-ALLOWED_HOSTS = ["testserver", "localhost"]
+ALLOWED_HOSTS = [
+    "testserver",
+    "localhost",
+    # Used by the redirect tests. Note these being here does NOT make them
+    # valid redirect targets: ALLOWED_HOSTS governs which hosts Django serves,
+    # not where it is safe to send an authenticated session. That distinction
+    # is the subject of tests/test_redirects.py.
+    "app.example.test",
+    "other.example.test",
+    "evil.example.test",
+]
 USE_TZ = True
 
 INSTALLED_APPS = [
