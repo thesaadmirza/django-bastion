@@ -40,6 +40,8 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "tests.urls"
 
+CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -86,6 +88,9 @@ CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
 SECURE_HSTS_SECONDS = 3600
 
-AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
+# SSO only, with no password fallback. That is the shape the package is built
+# for, and it keeps `check --deploy` clean on these settings: enabling
+# ModelBackend alongside it without configuring break-glass trips E023.
+AUTHENTICATION_BACKENDS = ["bastion.backends.SSOBackend"]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
