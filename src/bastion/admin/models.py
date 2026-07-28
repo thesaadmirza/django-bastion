@@ -13,6 +13,7 @@ from typing import Any
 from django.contrib import admin
 from django.http import HttpRequest
 
+from bastion.audit.models import AuditEvent
 from bastion.models import FederatedIdentity
 
 
@@ -42,4 +43,43 @@ class FederatedIdentityAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+
+@admin.register(AuditEvent)
+class AuditEventAdmin(admin.ModelAdmin):
+    """A reader for the audit log.
+
+    Entirely read-only, including delete. Retention is the only route by which
+    records leave, and it records what it removed; a delete button here would
+    be a way to remove evidence without leaving any.
+
+    The actor column shows the opaque token rather than a name, because that is
+    genuinely all the table holds. Resolving it needs the mapping, and after an
+    erasure request there is nothing to resolve.
+    """
+
+    list_display = (
+        "chain_seq",
+        "occurred_at",
+        "event_type",
+        "outcome",
+        "actor_pseudonym",
+        "connection",
+        "is_privileged",
+    )
+    list_filter = ("event_type", "outcome", "severity", "is_privileged", "connection")
+    search_fields = ("actor_pseudonym", "subject", "correlation_id", "target_id")
+    date_hierarchy = "occurred_at"
+    ordering = ("-chain_seq",)
+
+    readonly_fields = tuple(field.name for field in AuditEvent._meta.fields if field.name != "id")
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         return False

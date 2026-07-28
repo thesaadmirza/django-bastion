@@ -19,6 +19,7 @@ challenge content.
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 import secrets
@@ -214,6 +215,11 @@ class AuditChain(models.Model):
     name = models.CharField(max_length=64, primary_key=True)
     last_seq = models.BigIntegerField(default=0)
     last_hash = models.CharField(max_length=64, blank=True)
+    #: Everything at or below this was removed by the retention policy. Without
+    #: it, the first purge makes verification report a gap for the rest of the
+    #: chain's life, and a permanently failing integrity check is one nobody
+    #: reads.
+    purged_through_seq = models.BigIntegerField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -244,23 +250,107 @@ def verify_chain(chain: str = DEFAULT_CHAIN) -> tuple[bool, list[str]]:
     Detects a rewritten record, a removed one, and a resequenced one. Does not
     detect an adversary who recomputed the whole chain after editing it, which
     is why the head hash needs anchoring somewhere they do not control.
+
+    Verification starts after the retention watermark. Records removed by the
+    policy are accounted for; records removed any other way are not.
     """
     problems: list[str] = []
-    previous_hash = ""
-    expected_seq = 1
+    head = AuditChain.objects.filter(name=chain).first()
+    watermark = head.purged_through_seq if head else 0
 
-    for event in AuditEvent.objects.filter(chain=chain).order_by("chain_seq").iterator():
+    previous_hash = ""
+    expected_seq = watermark + 1
+    first = True
+
+    for event in (
+        AuditEvent.objects.filter(chain=chain, chain_seq__gt=watermark)
+        .order_by("chain_seq")
+        .iterator()
+    ):
         if event.chain_seq != expected_seq:
             problems.append(f"sequence gap: expected {expected_seq}, found {event.chain_seq}")
             expected_seq = event.chain_seq
-        if event.prev_hash != previous_hash:
+        # The first surviving record after a purge legitimately links to a
+        # predecessor that no longer exists.
+        if not (first and watermark) and event.prev_hash != previous_hash:
             problems.append(f"broken link at {event.chain_seq}")
         if event.record_hash != event.compute_hash():
             problems.append(f"record {event.chain_seq} does not match its hash")
         previous_hash = event.record_hash
         expected_seq += 1
+        first = False
 
     return not problems, problems
+
+
+def purge_before(cutoff: dt.datetime, *, chain: str = DEFAULT_CHAIN) -> int:
+    """Apply the retention policy, recording what was removed.
+
+    Uses a queryset delete, which does not go through the model's append-only
+    guard. That is the one legitimate way records leave, and it is why the
+    guard lives on the instance rather than in a database trigger.
+
+    The watermark and the recorded event exist so the resulting gap has an
+    explanation. A hole in an audit sequence with nothing accounting for it
+    looks exactly like evidence destruction, and a retention job should not be
+    indistinguishable from that.
+    """
+    from bastion.audit.recorder import emit
+
+    doomed = AuditEvent.objects.filter(chain=chain, occurred_at__lt=cutoff)
+    highest = doomed.order_by("-chain_seq").values_list("chain_seq", flat=True).first()
+    if highest is None:
+        return 0
+
+    count = doomed.count()
+    doomed.delete()
+    AuditChain.objects.filter(name=chain).update(purged_through_seq=highest)
+
+    emit(
+        Event.AUDIT_PURGED,
+        outcome=Outcome.SUCCESS,
+        severity=Severity.NOTICE,
+        chain=chain,
+        context={"removed": count, "through_seq": highest, "cutoff": cutoff.isoformat()},
+    )
+    return count
+
+
+def export_manifest(
+    *, chain: str = DEFAULT_CHAIN, since: dt.datetime | None = None
+) -> dict[str, Any]:
+    """Describe an export so its completeness can be checked.
+
+    Row count, sequence range and head hash, signed with the project secret.
+    This answers the question auditors actually ask about a sampled export,
+    which is not "is this record true" but "is this all of them".
+    """
+    from django.core import signing
+
+    events = AuditEvent.objects.filter(chain=chain)
+    if since is not None:
+        events = events.filter(occurred_at__gte=since)
+
+    aggregate = events.aggregate(
+        count=models.Count("pk"),
+        lowest=models.Min("chain_seq"),
+        highest=models.Max("chain_seq"),
+    )
+    head = AuditChain.objects.filter(name=chain).first()
+
+    body: dict[str, Any] = {
+        "chain": chain,
+        "count": aggregate["count"],
+        "first_seq": aggregate["lowest"],
+        "last_seq": aggregate["highest"],
+        "chain_head_seq": head.last_seq if head else 0,
+        "chain_head_hash": head.last_hash if head else "",
+        "purged_through_seq": head.purged_through_seq if head else 0,
+        "since": since.isoformat() if since else None,
+        "generated_at": dt.datetime.now(tz=dt.UTC).isoformat(),
+    }
+    body["signature"] = signing.dumps(body, salt="bastion.audit.manifest")
+    return body
 
 
 def forget_actor(user: Any, *, reason: str = "") -> int:
