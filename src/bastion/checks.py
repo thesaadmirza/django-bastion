@@ -1,7 +1,7 @@
 """Startup system checks.
 
-Every check here is a security invariant from FOUNDATIONS.md 2.2 that we can
-verify without a request. They run under ``manage.py check --deploy``, which
+Every check here is a security invariant that can be verified without a
+request. They run under ``manage.py check --deploy``, which
 means a missing signing certificate or a cookie flag left at Django's insecure
 default is caught before deploy rather than during an outage.
 

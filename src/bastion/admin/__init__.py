@@ -8,7 +8,7 @@ what happens at login is to change what that name resolves to, or what the view
 behind it does.
 
 We subclass ``AdminSite`` and swap it via ``AdminConfig.default_site``. Of the
-five approaches probed (FOUNDATIONS.md 6.2) it is the only documented one, and
-the only one that preserves the model registry while replacing the class,
-because ``AdminConfig.ready()`` runs before ``autodiscover_modules('admin')``.
+five approaches available it is the only documented one, and the only one that
+preserves the model registry while replacing the class, because
+``AdminConfig.ready()`` runs before ``autodiscover_modules('admin')``.
 """

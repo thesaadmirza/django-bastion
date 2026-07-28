@@ -1,8 +1,7 @@
 """OpenID Connect relying party.
 
 The delegation boundary here sits at the *primitive* level rather than the JOSE
-level, which is a deliberate departure from the first draft of FOUNDATIONS.md
-1.2. The reasoning:
+level. The reasoning:
 
 Every policy decision a JOSE library makes on our behalf is one we override
 anyway. We pin the algorithm allowlist, we refuse key material from the header,

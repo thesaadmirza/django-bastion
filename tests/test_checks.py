@@ -1,7 +1,7 @@
 """Every system check gets a test asserting its specific ID fires.
 
-FOUNDATIONS.md 2.4 requires this: a check that silently stops firing is worse
-than no check, because the deployment looks verified when it is not.
+A check that silently stops firing is worse than no check, because the
+deployment looks verified when it is not.
 """
 
 from __future__ import annotations

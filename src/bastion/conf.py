@@ -1,7 +1,7 @@
 """Settings resolution.
 
 Two rules govern everything in this module, and both come from watching other
-packages get it wrong (FOUNDATIONS.md 3.3):
+packages get it wrong:
 
 1. One namespaced ``BASTION`` dict. django-allauth ships roughly 134 flat
    top-level setting names across six prefixes and three casing conventions;
@@ -39,8 +39,8 @@ SETTING_NAME = "BASTION"
 #: *specific* identity provider belongs in the database.
 DEFAULTS: dict[str, Any] = {
     # The auth backend is the customisation seam for now. The ordered pipeline
-    # and the separate resolver/provisioner/reconciler protocols described in
-    # FOUNDATIONS.md 3.1 arrive with the rule engine; declaring their settings
+    # and the separate resolver/provisioner/reconciler protocols arrive with
+    # the rule engine; declaring their settings
     # before they exist would mean shipping a config surface that does nothing,
     # which is worse than not having one.
     "BACKEND": "bastion.backends.SSOBackend",

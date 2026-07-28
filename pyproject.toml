@@ -50,7 +50,7 @@ classifiers = [
 # Empty on purpose. OIDC support is in the base install, so `[oidc]` adds
 # nothing -- it is kept only so an install line that already says it keeps
 # working. There is deliberately no JOSE library: see
-# src/bastion/protocols/oidc for why, and FOUNDATIONS.md 1.2 for the record.
+# src/bastion/protocols/oidc for why.
 oidc = []
 
 # SAML is opt-in because it drags in xmlsec, which needs system packages, and
@@ -134,7 +134,8 @@ known-first-party = ["bastion", "tests"]
 
 [tool.ruff.lint.flake8-bandit]
 # `assert` must never guard a runtime invariant in the auth path -- it vanishes
-# under `python -O`. See FOUNDATIONS.md 3.x (anti-patterns).
+# under `python -O`, turning a check into no check on the deployments most
+# likely to be tuned for performance.
 check-typed-exception = true
 
 # --------------------------------------------------------------------------- #
@@ -171,7 +172,7 @@ django_settings_module = "tests.settings"
 [tool.pyright]
 # Advisory, not a merge gate. Pyright does NOT load the mypy plugin, so this job
 # exists to prove our public API is usable by the (large) pyright/Pylance
-# population who see only the static stubs. See FOUNDATIONS.md 11.8.
+# population who see only the static stubs.
 include = ["src"]
 typeCheckingMode = "basic"
 pythonVersion = "3.11"

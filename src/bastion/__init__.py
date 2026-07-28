@@ -6,8 +6,8 @@ JOSE primitives are delegated to authlib, pysaml2 and python-ldap. Our job is
 to assert their configuration, re-check their output structurally, and own
 everything that happens after an assertion validates.
 
-See FOUNDATIONS.md for the decision record, and docs/security/threat-model.md
-for what this package does and does not defend against.
+See docs/security/threat-model.md for what this package does and does not
+defend against.
 """
 
 from __future__ import annotations

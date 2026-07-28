@@ -44,8 +44,8 @@ class ValidationPolicy:
     #: OIDC Core says a client SHOULD verify ``azp`` when the audience is
     #: multi-valued. We default to MUST.
     #:
-    #: This is stricter than the specification and is flagged as such in
-    #: FOUNDATIONS.md 14. It is the correct default -- a token minted for
+    #: This is stricter than the specification, deliberately. It is the
+    #: correct default -- a token minted for
     #: another client that happens to list us as a secondary audience should
     #: not authenticate anyone here -- but a conformant provider that emits a
     #: multi-valued ``aud`` without ``azp`` will be rejected, so the escape

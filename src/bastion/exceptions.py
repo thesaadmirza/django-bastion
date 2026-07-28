@@ -4,9 +4,9 @@ Two rules about these.
 
 They are typed so the pipeline can tell an infrastructure failure from a
 credential failure and log the difference. They are **not** rendered to end
-users. Everything that reaches a browser goes through the three-tier error
-policy in FOUNDATIONS.md 9.3, where a pre-authentication failure produces one
-generic body and one status code regardless of which subclass was raised.
+users. Everything that reaches a browser goes through a three-tier error
+policy: a pre-authentication failure produces one generic body and one status
+code regardless of which subclass was raised.
 Anything else is an account-enumeration oracle.
 
 None of these carry the token, the assertion, or the claim set. An exception

@@ -45,8 +45,8 @@ def alg_none(payload: dict[str, Any]) -> str:
     """`alg: none` with an empty signature.
 
     OIDC Core permits this for the code flow with explicit registration. We
-    refuse it anyway (FOUNDATIONS.md A2), because the carve-out has produced a
-    steady supply of bypasses, most recently authlib CVE-2026-28802.
+    refuse it anyway, because the carve-out has produced a steady supply of
+    bypasses, most recently authlib CVE-2026-28802.
     """
     return compact({"alg": "none", "typ": "JWT"}, payload, b"")
 
