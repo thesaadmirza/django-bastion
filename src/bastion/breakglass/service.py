@@ -43,7 +43,8 @@ def is_break_glass(user: Any) -> bool:
 
 
 def _config() -> dict[str, Any]:
-    return get_setting("BREAK_GLASS")
+    config: dict[str, Any] = get_setting("BREAK_GLASS")
+    return config
 
 
 def _network_allows(client_ip: str | None) -> bool:

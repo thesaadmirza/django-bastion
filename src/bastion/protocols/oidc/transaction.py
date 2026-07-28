@@ -174,7 +174,7 @@ class CacheTransactionStore:
         cache = self._cache()
         key = self._key(state)
 
-        transaction = cache.get(key)
+        transaction: Transaction | None = cache.get(key)
         if transaction is None:
             raise TransactionNotFound("no transaction matches this state")
 

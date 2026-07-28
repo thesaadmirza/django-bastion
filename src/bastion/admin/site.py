@@ -25,6 +25,7 @@ else renders a page. Never a redirect.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from django.contrib.admin import AdminSite
 from django.contrib.auth.decorators import login_not_required
@@ -57,7 +58,9 @@ class SSOAdminSiteMixin:
 
     @method_decorator(never_cache)
     @login_not_required
-    def login(self, request: HttpRequest, extra_context: dict | None = None) -> HttpResponse:
+    def login(
+        self, request: HttpRequest, extra_context: dict[str, Any] | None = None
+    ) -> HttpResponse:
         """Replace the admin's form login.
 
         ``login_not_required`` matters: ``LoginRequiredMiddleware`` would
@@ -66,7 +69,8 @@ class SSOAdminSiteMixin:
         replacing the attribute drops it unless it is re-applied.
         """
         if not self._sso_enabled():
-            return super().login(request, extra_context)  # type: ignore[misc]
+            stock: HttpResponse = super().login(request, extra_context)  # type: ignore[misc]
+            return stock
 
         if request.user.is_authenticated:
             if not self.has_permission(request):  # type: ignore[attr-defined]
@@ -139,8 +143,9 @@ class SSOAdminSiteMixin:
 
     # ----------------------------------------------------------------- config --
 
-    def _admin_settings(self) -> dict:
-        return get_setting("ADMIN")
+    def _admin_settings(self) -> dict[str, Any]:
+        settings: dict[str, Any] = get_setting("ADMIN")
+        return settings
 
     def _sso_enabled(self) -> bool:
         if not self._admin_settings().get("enabled", True):
@@ -151,9 +156,9 @@ class SSOAdminSiteMixin:
         configured = self.sso_connection or self._admin_settings().get("connection")
         if configured:
             return str(configured)
-        connections = get_setting("CONNECTIONS")
+        connections: dict[str, Any] = get_setting("CONNECTIONS")
         if len(connections) == 1:
-            return next(iter(connections))
+            return str(next(iter(connections)))
         return None
 
     def _required_groups(self) -> tuple[str, ...]:

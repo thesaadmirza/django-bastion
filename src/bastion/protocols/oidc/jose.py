@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -65,7 +65,14 @@ SUPPORTED_CRITICAL_HEADERS: frozenset[str] = frozenset()
 #: near this is either a bug or an attempt at resource exhaustion.
 MAX_TOKEN_BYTES = 16 * 1024
 
-_HASHES = {"256": hashes.SHA256, "384": hashes.SHA384, "512": hashes.SHA512}
+#: Typed as factories rather than as ``type[HashAlgorithm]``. The values are
+#: concrete subclasses, but the annotation would let mypy think an abstract
+#: base is being instantiated.
+_HASHES: dict[str, Callable[[], hashes.HashAlgorithm]] = {
+    "256": hashes.SHA256,
+    "384": hashes.SHA384,
+    "512": hashes.SHA512,
+}
 
 
 class KeyResolver(Protocol):

@@ -77,7 +77,7 @@ class UrllibTransport:
         response that would not fit in memory never gets there. Extracted from
         the request path purely so it can be tested without a socket.
         """
-        body = reader.read(self.max_bytes + 1)
+        body: bytes = reader.read(self.max_bytes + 1)
         if len(body) > self.max_bytes:
             raise TransportError(f"response exceeded {self.max_bytes} bytes")
         return body

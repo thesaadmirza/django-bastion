@@ -20,7 +20,7 @@ import binascii
 import logging
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -33,7 +33,12 @@ logger = logging.getLogger(__name__)
 
 Fetcher = Callable[[str], Mapping[str, Any]]
 
-_CURVES = {"P-256": ec.SECP256R1, "P-384": ec.SECP384R1, "P-521": ec.SECP521R1}
+#: Factories, for the same reason as the hash table in jose.py.
+_CURVES: dict[str, Callable[[], ec.EllipticCurve]] = {
+    "P-256": ec.SECP256R1,
+    "P-384": ec.SECP384R1,
+    "P-521": ec.SECP521R1,
+}
 
 #: Algorithms a JWK of each key type can possibly be used with. Prevents a
 #: resolver from handing back an RSA key for an ES256 header, which would fail
@@ -185,7 +190,7 @@ class JWKSStore:
         self._fetch_times.append(now)
 
         document = self.fetcher(self.uri)
-        keys: Sequence[Mapping[str, Any]] = document.get("keys", [])  # type: ignore[assignment]
+        keys: Any = document.get("keys", [])
         if not isinstance(keys, list) or not keys:
             raise DiscoveryError("JWKS document contains no keys")
 

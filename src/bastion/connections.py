@@ -135,7 +135,7 @@ _cache_lock = threading.Lock()
 
 def build_connection(identifier: str, config: dict[str, Any]) -> Connection:
     """Turn one settings entry into a Connection, or explain why not."""
-    unknown = set(config) - {f.name for f in Connection.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+    unknown = set(config) - set(Connection.__dataclass_fields__)
     unknown -= {"discovery"}
     if unknown:
         raise ConfigurationError(f"connection {identifier!r} has unknown keys: {sorted(unknown)}")
