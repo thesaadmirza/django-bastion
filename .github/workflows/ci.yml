@@ -114,9 +114,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv run --group dev pytest
-        env:
-          BASTION_TEST_DB: ${{ matrix.database }}
+      # Through nox, not pytest directly: the database drivers are installed by
+      # the tests_db session and are deliberately absent from the dev group, so
+      # calling pytest here fails to import psycopg before it runs a test.
+      - run: uv run --group dev nox -s "tests_db(database='${{ matrix.database }}')"
 
   coverage-core:
     # The security core carries a 100% gate. The rest of the repo is 95%.
