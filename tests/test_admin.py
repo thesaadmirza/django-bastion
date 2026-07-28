@@ -91,6 +91,29 @@ class TestSiteInstallation:
         assert reverse("admin:login")
         assert reverse("admin:logout")
 
+    def test_the_app_label_form_resolves_to_our_config(self) -> None:
+        """``"bastion.admin"`` must work, not only the dotted config path.
+
+        Django scans the module for AppConfig subclasses and treats every one
+        with a truthy ``default`` as a candidate. Our config inherits ``default``
+        from Django's ``AdminConfig``, so before this was pinned down the short
+        form raised "declares more than one default AppConfig" and named a
+        Django class the reader never configured.
+        """
+        from django.apps import AppConfig
+
+        from bastion.admin.apps import BastionAdminConfig
+
+        resolved = AppConfig.create("bastion.admin")
+        assert isinstance(resolved, BastionAdminConfig)
+
+    def test_the_base_config_is_not_a_module_level_candidate(self) -> None:
+        """What makes the line above work is that the imported base is not left
+        in the module namespace for Django's scan to find."""
+        from bastion.admin import apps
+
+        assert not hasattr(apps, "AdminConfig")
+
 
 @pytest.mark.usefixtures("sso_configured")
 class TestAnonymous:
