@@ -14,8 +14,15 @@ authors = [{ name = "Saad Mirza" }]
 keywords = ["django", "sso", "oidc", "saml", "scim", "audit", "identity", "authentication"]
 
 # Runtime dependencies stay loose. A library that pins is unusable in an enterprise.
+#
+# `cryptography` is not optional. OIDC is the default protocol, `connections.py`
+# imports it unconditionally, and the system checks reach that on every
+# `manage.py` invocation -- so a base install without it cannot even run
+# `manage.py check`. It ships wheels for every platform we support, unlike the
+# SAML stack, which is why that one stays an extra.
 dependencies = [
     "Django>=5.2",
+    "cryptography>=44.0",
 ]
 
 classifiers = [
@@ -40,13 +47,11 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-# OIDC needs nothing beyond `cryptography`, which Django already pulls in via
-# its own dependencies in most deployments. The extra exists so the intent is
-# declarable, and so a future addition here is not a surprise.
-#
-# There is deliberately no JOSE library. See src/bastion/protocols/oidc for
-# why, and FOUNDATIONS.md 1.2 for the decision record.
-oidc = ["cryptography>=44.0"]
+# Empty on purpose. OIDC support is in the base install, so `[oidc]` adds
+# nothing -- it is kept only so an install line that already says it keeps
+# working. There is deliberately no JOSE library: see
+# src/bastion/protocols/oidc for why, and FOUNDATIONS.md 1.2 for the record.
+oidc = []
 
 # SAML is opt-in because it drags in xmlsec, which needs system packages, and
 # the common case does not need it.
