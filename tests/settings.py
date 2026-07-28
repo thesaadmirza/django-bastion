@@ -61,25 +61,28 @@ TEMPLATES = [
 
 
 def _database() -> dict[str, object]:
+    """Pick a backend from BASTION_TEST_DB, defaulting to in-memory SQLite.
+
+    Connection details are overridable so that these sessions can be run
+    locally without stopping whatever already owns the default port. The
+    defaults are the CI service containers, so CI needs none of the overrides.
+    """
     backend = os.environ.get("BASTION_TEST_DB", "sqlite")
+
+    def connection(engine: str, user: str, port: str) -> dict[str, object]:
+        return {
+            "ENGINE": engine,
+            "NAME": os.environ.get("BASTION_TEST_DB_NAME", "bastion"),
+            "USER": os.environ.get("BASTION_TEST_DB_USER", user),
+            "PASSWORD": os.environ.get("BASTION_TEST_DB_PASSWORD", "bastion"),
+            "HOST": os.environ.get("BASTION_TEST_DB_HOST", "127.0.0.1"),
+            "PORT": os.environ.get("BASTION_TEST_DB_PORT", port),
+        }
+
     if backend == "postgres":
-        return {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": "bastion",
-            "USER": "postgres",
-            "PASSWORD": "bastion",
-            "HOST": "127.0.0.1",
-            "PORT": "5432",
-        }
+        return connection("django.db.backends.postgresql", "postgres", "5432")
     if backend == "mysql":
-        return {
-            "ENGINE": "django.db.backends.mysql",
-            "NAME": "bastion",
-            "USER": "root",
-            "PASSWORD": "bastion",
-            "HOST": "127.0.0.1",
-            "PORT": "3306",
-        }
+        return connection("django.db.backends.mysql", "root", "3306")
     return {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
 
 
