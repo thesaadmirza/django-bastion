@@ -135,6 +135,31 @@ class AccessTokenHashMismatch(ClaimValidationError):
 # --------------------------------------------------------------------------- #
 
 
+class TransactionError(BastionError):
+    """The browser transaction could not be resumed.
+
+    Callers must not distinguish these to the user either. "Unknown state" and
+    "already used" tell an attacker probing a stolen state value which of the
+    two they are holding.
+    """
+
+
+class TransactionNotFound(TransactionError):
+    """No record matches the returned ``state``."""
+
+
+class TransactionExpired(TransactionError):
+    """The record existed but its window has closed."""
+
+
+class TransactionReplayed(TransactionError):
+    """The record was consumed by someone else first.
+
+    Single-use is what stops an authorization code being replayed into a
+    second session.
+    """
+
+
 class DiscoveryError(BastionError):
     """The provider's metadata could not be fetched or is unusable."""
 
