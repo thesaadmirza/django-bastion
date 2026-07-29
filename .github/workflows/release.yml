@@ -1,0 +1,204 @@
+name: Release
+
+# Tag-driven. Pushing v0.0.1a0 publishes 0.0.1a0; there is no other way in, and
+# no long-lived credential exists that could be used out of band.
+#
+# workflow_dispatch publishes to TestPyPI instead, because the first time a
+# release path runs should not be the time it matters.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Least privilege at the top. Jobs opt in, and only the two that need a token
+# get one.
+permissions: {}
+
+env:
+  FORCE_COLOR: "1"
+
+jobs:
+  # ---------------------------------------------------------------- guard --
+  verify:
+    name: Verify the tag describes what is in the tree
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          # Same reason as the build job: nothing on the release path restores
+          # a cache that a pull request could have written.
+          enable-cache: false
+
+      - name: Read the version out of the package
+        id: version
+        run: |
+          version=$(uv run --group dev python -c \
+            'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "pyproject declares $version"
+
+      - name: The tag and the version must agree
+        # A tag that says one thing while the metadata says another produces a
+        # release nobody can find and a version number burned for nothing.
+        # PyPI will not let either be corrected afterwards.
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag $TAG does not match version $VERSION in pyproject.toml"
+            exit 1
+          fi
+          echo "$TAG matches $VERSION"
+
+      - name: The whole suite, on the interpreter matrix's oldest and newest
+        # Not a substitute for CI, which has already run on this commit. This
+        # is the belt: a release must never be cut from a tree that cannot pass
+        # its own tests, whatever the branch protection happens to say today.
+        run: |
+          uv run --python 3.11 --with "Django==5.2.*" --group dev pytest -q
+          uv run --python 3.14 --prerelease=allow --with "Django==6.1.*" --group dev pytest -q
+
+  # ---------------------------------------------------------------- build --
+  build:
+    name: Build and describe the artifacts
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          # No cache on the job that produces the artifacts people install.
+          # A cache is writable from any branch, so a poisoned entry restored
+          # here would end up inside the wheel, and the attestation would
+          # faithfully certify that we built it.
+          enable-cache: false
+
+      - name: Build sdist and wheel
+        run: uv build --out-dir dist
+
+      - name: Check the metadata PyPI will render
+        run: uvx twine check --strict dist/*
+
+      - name: Generate a CycloneDX SBOM from what actually installs
+        # Built from a clean environment holding the wheel and nothing else, so
+        # it describes the dependency set a consumer resolves rather than the
+        # development lockfile.
+        #
+        # The tool runs via uvx, in its own environment. Installed alongside the
+        # wheel it inventories itself, which turns four dependencies into
+        # thirty-nine components and makes the document worthless.
+        run: |
+          uv venv .sbom-env
+          VIRTUAL_ENV=.sbom-env uv pip install dist/*.whl
+          uvx --from cyclonedx-bom cyclonedx-py environment .sbom-env \
+            --output-format JSON \
+            --output-file dist/django-bastion-sbom.cdx.json \
+            --pyproject pyproject.toml
+
+      - name: Prove the wheel installs and runs on its own
+        run: |
+          uv venv .smoke-env
+          VIRTUAL_ENV=.smoke-env uv pip install dist/*.whl
+          .smoke-env/bin/python tests/smoke_installed.py
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # -------------------------------------------------------------- publish --
+  testpypi:
+    name: Publish to TestPyPI
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/django-bastion
+    permissions:
+      # The only credential in the process. Exchanged for a short-lived token
+      # by PyPI itself; nothing long-lived exists to leak.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+      - name: Drop the SBOM before upload
+        # PyPI accepts only distributions. The SBOM travels with the GitHub
+        # release instead.
+        run: rm -f dist/*.json
+      - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          attestations: true
+
+  pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/django-bastion
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+      - name: Drop the SBOM before upload
+        run: rm -f dist/*.json
+      - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        with:
+          # PEP 740 attestations, signed with the same OIDC identity that
+          # published. Verifiable against this repository and this workflow.
+          attestations: true
+
+  # -------------------------------------------------------- github release --
+  github-release:
+    name: Attach the artifacts to a GitHub release
+    if: github.event_name == 'push'
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dist
+          path: dist/
+      # `gh` rather than a third-party action. It ships on the runner, so this
+      # is one less repository with write access to what a release looks like.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Alpha, beta and rc tags are marked pre-release, so nobody installs
+          # one expecting stability nobody promised.
+          case "$TAG" in
+            *a*|*b*|*rc*) flag="--prerelease" ;;
+            *)            flag="--latest" ;;
+          esac
+          gh release create "$TAG" dist/* \
+            --repo "$REPO" \
+            --title "$TAG" \
+            --generate-notes \
+            $flag
