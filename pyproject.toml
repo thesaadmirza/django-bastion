@@ -61,7 +61,10 @@ scim = []
 
 [project.urls]
 Homepage = "https://github.com/thesaadmirza/django-bastion"
-Documentation = "https://django-bastion.readthedocs.io"
+# The docs tree in the repository, not a Read the Docs project. There is no
+# such project, and a dead link on the PyPI page is worse than an unglamorous
+# live one. Point this at Read the Docs on the day it exists.
+Documentation = "https://github.com/thesaadmirza/django-bastion/blob/main/docs/index.md"
 Changelog = "https://github.com/thesaadmirza/django-bastion/blob/main/CHANGELOG.md"
 Issues = "https://github.com/thesaadmirza/django-bastion/issues"
 Security = "https://github.com/thesaadmirza/django-bastion/blob/main/SECURITY.md"
