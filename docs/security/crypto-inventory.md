@@ -73,8 +73,7 @@ All from `secrets`, which uses the OS CSPRNG.
 | Use | Algorithm |
 |---|---|
 | PKCE challenge | SHA-256, `S256` only. `plain` is refused |
-| `at_hash` / `c_hash` | Derived from the pinned token algorithm. Cannot-compute is a rejection |
-| JWK thumbprint (`kid`) | SHA-256, RFC 7638 |
+| `at_hash` | Derived from the pinned token algorithm. Cannot-compute is a rejection |
 | Audit record hash | SHA-256 over a fixed, explicitly ordered payload |
 | Session identifier in audit records | SHA-256, truncated to 32 hex characters |
 | Passwords (break-glass only) | Django's configured hasher |
@@ -83,6 +82,13 @@ All from `secrets`, which uses the OS CSPRNG.
 The audit digest payload has a **fixed field order written out by hand** rather
 than derived from the model, so that adding a field does not silently change the
 hash of records already written.
+
+Two things this table used to list and should not have. `c_hash` is not
+validated: it belongs to the hybrid flow, and this package only implements the
+authorization code flow, so the claim never arrives. And `kid` is read from the
+provider's JWKS rather than computed, so no RFC 7638 thumbprint is taken
+anywhere. A key set whose `kid` values are wrong would be the provider's
+problem to notice, not ours.
 
 ## What is not encrypted
 
