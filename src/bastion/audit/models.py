@@ -23,14 +23,14 @@ import datetime as dt
 import hashlib
 import json
 import secrets
-import time
 from typing import Any, NoReturn
 
 from django.conf import settings
-from django.db import OperationalError, models, transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from bastion.audit.events import Event, Outcome, Severity
+from bastion.db import retry_on_lock_contention
 
 #: Bumped when the field set changes. Retention spans multi-year windows and
 #: the schema will move inside a single audit period; without this, old records
@@ -72,47 +72,54 @@ class AuditActor(models.Model):
         return actor
 
 
-#: How many times an append may be reissued after the server aborted it to
-#: break a deadlock. Small on purpose: contention here is short-lived, and a
-#: long retry loop holding a request thread is its own availability problem.
-_APPEND_ATTEMPTS = 4
+def _clear_for_retry(cls: Any, event: AuditEvent) -> None:
+    """Put the event back to unsaved between attempts.
 
-#: Base delay, doubled each attempt. Without a pause the retry re-enters the
-#: same contention it just lost.
-_APPEND_BACKOFF = 0.02
-
-#: Server-side codes meaning "you lost a lock race, try again", as opposed to
-#: anything else OperationalError covers. Matching on these rather than
-#: retrying every OperationalError keeps a genuinely broken connection or a
-#: full disk from being retried three times before it is reported.
-#:
-#: MySQL 1213 deadlock, 1205 lock wait timeout. PostgreSQL 40001 serialization
-#: failure, 40P01 deadlock detected.
-_MYSQL_LOCK_ERRORS = frozenset({1205, 1213})
-_POSTGRES_LOCK_STATES = frozenset({"40001", "40P01"})
-
-
-def _is_lock_contention(exc: OperationalError) -> bool:
-    """Whether the server aborted this transaction over a lock, not a fault."""
-    cause = exc.__cause__ or exc
-
-    sqlstate = getattr(cause, "sqlstate", None)
-    if sqlstate in _POSTGRES_LOCK_STATES:
-        return True
-
-    args = getattr(cause, "args", ())
-    if args and isinstance(args[0], int) and args[0] in _MYSQL_LOCK_ERRORS:
-        return True
-
-    # psycopg exposes the state under a different attribute depending on
-    # version, so fall back to it before giving up.
-    diag = getattr(cause, "diag", None)
-    return getattr(diag, "sqlstate", None) in _POSTGRES_LOCK_STATES
+    The failed save left a primary key on the instance, and reusing it would
+    turn the retry into an update of a row the rollback removed.
+    """
+    event.pk = None
+    event._state.adding = True
 
 
 class AuditEventQuerySet(models.QuerySet["AuditEvent"]):
     def in_order(self) -> AuditEventQuerySet:
         return self.order_by("chain", "chain_seq")
+
+    def failures_from(
+        self,
+        source_ip: str,
+        *,
+        since: dt.datetime,
+        protocol: str,
+        limit: int,
+        ignoring: str = "",
+    ) -> int:
+        """Count failures from one address, stopping at ``limit``.
+
+        Lives here rather than in the caller so the storage details -- which
+        enum values are stored as strings, which index the clause order targets
+        -- stay inside the audit package.
+
+        Stopping at the limit is the point. A caller asking "have there been
+        five" does not need to know there have been fifty thousand, and
+        counting them all would let whoever produced them set the cost of
+        answering.
+        """
+        rows = self.filter(
+            # event_type leads so the (event_type, occurred_at) index applies.
+            event_type=Event.PROTOCOL_FALLBACK,
+            occurred_at__gte=since,
+            auth_protocol=protocol,
+            source_ip=source_ip,
+            outcome__in=(str(Outcome.FAILURE), str(Outcome.DENIED)),
+        )
+        if ignoring:
+            rows = rows.exclude(reason=ignoring)
+        # order_by() is required: Meta.ordering is dropped by a bare count()
+        # but survives inside a sliced subquery, where it would sort the whole
+        # match set and undo the slice.
+        return rows.order_by()[:limit].count()
 
     def for_actor(self, pseudonym: str) -> AuditEventQuerySet:
         return self.filter(actor_pseudonym=pseudonym)
@@ -268,6 +275,7 @@ class AuditChain(models.Model):
         return f"{self.name}@{self.last_seq}"
 
     @classmethod
+    @retry_on_lock_contention(reset=_clear_for_retry)
     def append(cls, event: AuditEvent) -> AuditEvent:
         """Assign the next sequence number and link the hash, retrying on
         lock contention.
@@ -285,27 +293,13 @@ class AuditChain(models.Model):
         rolled back, so no gap appears either, and ``verify_chain`` still passes
         over a log that is missing entries.
 
-        Caveat: if the caller has already opened an atomic block, the outer
-        transaction is broken by the deadlock and no retry can succeed. The
-        exception propagates in that case, which is correct -- the caller's
-        transaction has to be the thing that restarts.
+        Most logins reach this from inside the backend's own atomic block, where
+        no retry can succeed because the deadlock already marked that
+        transaction for rollback. The decorator detects that and re-raises
+        rather than burning attempts, and the backend carries its own retry at
+        the boundary that can actually restart.
         """
-        last: OperationalError | None = None
-        for attempt in range(_APPEND_ATTEMPTS):
-            try:
-                return cls._append_once(event)
-            except OperationalError as exc:
-                if not _is_lock_contention(exc):
-                    raise
-                last = exc
-                # Fresh instance state: the failed save left a primary key on
-                # the event, and reusing it would turn the retry into an UPDATE
-                # of a row that no longer exists.
-                event.pk = None
-                event._state.adding = True
-                if attempt < _APPEND_ATTEMPTS - 1:
-                    time.sleep(_APPEND_BACKOFF * (2**attempt))
-        raise last  # type: ignore[misc]
+        return cls._append_once(event)
 
     @classmethod
     @transaction.atomic
