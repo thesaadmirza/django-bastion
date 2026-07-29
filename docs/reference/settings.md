@@ -77,7 +77,20 @@ once.
 | `ENABLED` | `False` | |
 | `ALERT_SINKS` | `[]` | Callables taking `subject` and `detail`, fired synchronously. **A startup check refuses enabled-with-none** |
 | `ALLOWED_NETWORKS` | `[]` | CIDRs. Empty means anywhere, which the doctor warns about |
+| `MAX_FAILURES_PER_IP` | `5` | Credential failures from one address before that address is refused. `0` turns the throttle off |
+| `FAILURE_WINDOW_SECONDS` | `900` | How far back those failures are counted |
 | `SUCCESS_URL` | `"/admin/"` | |
+
+The throttle keys on the source address and never on the account. Locking the
+account is what an ordinary login should do and what this one must not: anyone
+able to reach the form could then disable emergency access by failing against
+it, without needing a valid password.
+
+Failures are counted out of the audit table rather than a cache, so the count
+holds across workers and survives a restart. That makes the database sink a
+dependency: `manage.py check` fails with `bastion.E101` if the throttle is on
+and `bastion.audit.sinks.DatabaseSink` is not configured, rather than leaving a
+security control quietly doing nothing.
 
 ## Django settings this package cares about
 
@@ -103,6 +116,7 @@ Silenceable individually via `SILENCED_SYSTEM_CHECKS`. Stable; do not renumber.
 | `bastion.E023` | Password fallback alongside SSO with no break-glass |
 | `bastion.E026` | Identity key is not `(issuer, subject)` |
 | `bastion.E100` | Break-glass enabled with no alert sink |
+| `bastion.E101` | Break-glass throttling on with no audit database sink to count from |
 | `bastion.W030` | Session engine cannot revoke individual sessions |
 
 ## Not yet implemented

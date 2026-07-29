@@ -46,9 +46,15 @@ backdoor with paperwork.
 - Every outcome — success, wrong password, unknown account, wrong network —
   is audited at critical severity and fires the alert sinks.
 - The last active account cannot be deleted or revoked.
-- **There is no lockout.** Every other login path here should lock out; this one
-  must not, because locking the fire escape is itself the denial of service.
-  Repeated failures alert instead of blocking.
+- **The account is never locked, only the address.** Five credential failures
+  from one address in fifteen minutes and that address is refused; the same
+  credentials still work from anywhere else. Every other login path here should
+  lock the account, and this one must not, because locking the fire escape is
+  itself the denial of service and would not even require a valid password.
+
+  If you are locked out mid-incident, you have not lost the account. Move to
+  another machine or network, or wait out the window. Both are faster than
+  whatever you were about to try instead.
 
 ## Rules only you can enforce
 

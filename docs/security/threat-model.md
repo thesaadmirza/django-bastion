@@ -114,10 +114,14 @@ change your position.
   account set can be restricted by network, and `manage.py check` fails with `bastion.E100` if break-glass
   is enabled with no alert sink. It remains the highest-value target in the system.
 
-  Two controls you might expect are absent. There is no expiry on a grant, so an account created for one
-  incident stays valid until somebody deactivates it; `bastion_breakglass list` and the staleness report
-  exist so that "somebody" has something to work from. There is no rate limiting on the login form either,
-  so brute-force resistance is whatever your password policy and your edge provide.
+  Credential failures throttle the address they came from, five in fifteen minutes by default. They never
+  throttle the account. That split is the whole point: if failures locked the account, anybody who could
+  reach the form could switch off emergency access during the outage it exists for, and they would not
+  need a valid password to do it. An address can be abandoned. The fire escape cannot.
+
+  One control you might expect is still absent. There is no expiry on a grant, so an account created for
+  one incident stays valid until somebody deactivates it; `bastion_breakglass list` and the staleness
+  report exist so that "somebody" has something to work from.
 - **The audit log is tamper-evident, not tamper-proof.** Hash chaining tells you the log was edited. It
   cannot stop the edit, and it cannot detect an adversary with database write access who recomputes the
   chain afterwards. Shipping to a system under different administrative control is the control that
