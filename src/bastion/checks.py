@@ -126,8 +126,13 @@ def check_breakglass_throttle_storage(app_configs: Any, **kwargs: Any) -> list[C
     if not config.get("ENABLED") or not config.get("MAX_FAILURES_PER_IP"):
         return []
 
-    sinks = get_setting("AUDIT").get("SINKS", [])
-    if any("DatabaseSink" in str(sink) for sink in sinks):
+    from bastion.audit.recorder import get_sinks
+    from bastion.audit.sinks import DatabaseSink
+
+    # Resolved instances, not the configured strings. Matching the name would
+    # accept somebody's MyDatabaseSink that writes somewhere else, and reject a
+    # subclass under another name that writes exactly where we look.
+    if any(isinstance(sink, DatabaseSink) for sink in get_sinks()):
         return []
 
     return [
