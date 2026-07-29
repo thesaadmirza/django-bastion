@@ -18,10 +18,10 @@ a library we configure, and some belong to whoever deploys us. Each one says whi
 
 ```
  [ browser ] --(1)-- [ your Django app + bastion ] --(2)-- [ identity provider ]
-                             |                                       |
-                            (3)                                     (4)
-                             |                                       |
-                      [ your database ]                    [ SCIM push, inbound ]
+                             |
+                            (3)
+                             |
+                      [ your database ]
 ```
 
 1. **Browser to app.** Hostile. Everything in the request is attacker-controlled, including headers that
@@ -29,19 +29,19 @@ a library we configure, and some belong to whoever deploys us. Each one says whi
 2. **App to IdP.** Semi-trusted. We chose the IdP, but responses arrive over a channel the browser can
    influence (redirects, POST bindings), and the IdP itself can be compromised or misconfigured.
 3. **App to database.** Trusted. If this boundary is breached, nothing here helps.
-4. **SCIM inbound.** Hostile until the bearer token is verified. The token is a superuser-equivalent
-   credential.
+
+There is no inbound boundary. SCIM would add one, and it is not built; when it is, this diagram grows a
+fourth edge and the sections below grow with it.
 
 ## Assets
 
 | Asset | Why an attacker wants it |
 |---|---|
 | A staff or superuser session | Full read/write on every registered model |
-| The claims-to-role mapping rules | Editing one rule grants standing access, quietly |
+| `staff_groups` and `superuser_groups` in settings | Adding one group name grants standing access, quietly |
 | Break-glass credentials | Bypasses SSO by design, so it bypasses every IdP-side control |
-| SCIM bearer tokens | Create, modify and deactivate any account |
 | The audit log | Not to read, but to edit, to remove evidence of the above |
-| IdP client secrets and signing certificates | Forge assertions for every user |
+| IdP client secrets | Exchange an authorization code as us |
 
 ## Threats, by boundary
 
@@ -82,7 +82,7 @@ token or forged request directly rather than relying on a library to refuse to b
 | Threat | Control |
 |---|---|
 | Deprovisioned user keeps a live session | Auth-hash rotation via `set_unusable_password()`, plus session-row deletion where the engine permits it. Setting `is_active=False` alone is **not** a session kill; it works only as a side effect of `ModelBackend.get_user()` |
-| SCIM token used to mass-deactivate | Bulk operations above a threshold require a second factor |
+| Deprovisioning never reaches us at all | Nothing. Without SCIM there is no inbound signal, so removal takes effect at the next login and not before. Deployments that need faster than that have to drive it themselves |
 
 ## Out of scope
 
@@ -109,15 +109,19 @@ change your position.
 
 ## Residual risk we accept
 
-- **Break-glass is a deliberate SSO bypass.** That is its purpose. We mitigate with time-boxing, mandatory
-  justification, synchronous alerting and independent rate limiting, and we refuse to start if alerting is
-  unconfigured. It remains the highest-value target in the system.
-- **The SCIM endpoint is an authenticated write API for identities.** Per-tenant tokens, hashed at rest,
-  optionally IP or mTLS bound, and structurally unable to grant superuser or touch break-glass accounts.
-- **Trusted-proxy header authentication is safe only if the edge strips the header on every inbound
-  request.** We verify what we can (source CIDR, shared secret) and fail closed on the rest, but a
-  misconfigured proxy is a complete authentication bypass and no amount of application code fixes that.
-  We document it loudly and refuse the convenient default.
+- **Break-glass is a deliberate SSO bypass.** That is its purpose. A written reason is required to create
+  one, both outcomes of every attempt are recorded at critical severity, alerting is synchronous, the
+  account set can be restricted by network, and `manage.py check` fails with `bastion.E100` if break-glass
+  is enabled with no alert sink. It remains the highest-value target in the system.
+
+  Two controls you might expect are absent. There is no expiry on a grant, so an account created for one
+  incident stays valid until somebody deactivates it; `bastion_breakglass list` and the staleness report
+  exist so that "somebody" has something to work from. There is no rate limiting on the login form either,
+  so brute-force resistance is whatever your password policy and your edge provide.
+- **The audit log is tamper-evident, not tamper-proof.** Hash chaining tells you the log was edited. It
+  cannot stop the edit, and it cannot detect an adversary with database write access who recomputes the
+  chain afterwards. Shipping to a system under different administrative control is the control that
+  actually holds; the chain is what makes a discrepancy visible when you compare the two.
 
 ## Reporting
 
