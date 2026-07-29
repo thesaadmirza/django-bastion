@@ -1,16 +1,16 @@
 # django-bastion
 
-Enterprise SSO and identity governance for Django. Puts the admin behind your identity provider, maps
-claims to roles as reviewable data rather than code, records an audit trail, and gives you a fire escape
-for when the IdP is down.
+Enterprise SSO and identity governance for Django. Puts the admin behind your identity provider, turns
+the group claim into staff and superuser rights, records who got what and when, and leaves you a fire
+escape for the morning the provider is down.
 
 > **Status: pre-alpha.** Nothing is published to PyPI yet. The quickstart below is the working
 > configuration, not a sketch of one. Where something is designed but not built, it says so.
 
 ## Quickstart
 
-Three edits. Assumes Microsoft Entra ID; every other provider is the same shape with a different
-`discovery` URL.
+Three edits. Assumes Microsoft Entra ID. Another provider is the same shape with a different `issuer` and
+a different `provider` name; the [how-to pages](docs/how-to/) cover the ones with quirks worth knowing.
 
 ```python
 # settings.py
