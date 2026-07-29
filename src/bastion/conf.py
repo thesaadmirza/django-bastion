@@ -77,6 +77,12 @@ DEFAULTS: dict[str, Any] = {
         #: Callables taking (subject, detail), fired synchronously. A startup
         #: check refuses to run with break-glass on and this empty.
         "ALERT_SINKS": [],
+        #: Credential failures from one address before that address is refused,
+        #: counted over FAILURE_WINDOW_SECONDS. Per address and never per
+        #: account: locking the account would let anyone who can reach the form
+        #: disable the emergency route. 0 disables the throttle.
+        "MAX_FAILURES_PER_IP": 5,
+        "FAILURE_WINDOW_SECONDS": 900,
         "SUCCESS_URL": "/admin/",
     },
     "AUDIT": {

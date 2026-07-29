@@ -279,16 +279,36 @@ class TestView:
         )
         assert response.status_code == 401
 
-    def test_repeated_failures_are_not_locked_out(self, client: Client, enabled, operator) -> None:
-        """Locking the fire escape is the denial of service. Failures alert
-        rather than block."""
+    def test_repeated_failures_never_lock_the_account(
+        self, client: Client, enabled, operator
+    ) -> None:
+        """Locking the fire escape is the denial of service.
+
+        Failures do throttle the address they came from, but the account itself
+        is never locked, so the same credentials still work from somewhere else.
+        Without that split, anyone who can reach this form could disable
+        emergency access during the outage it exists for.
+        """
         for _ in range(10):
-            client.post("/sso/break-glass/", {"username": "firefighter", "password": "wrong"})
-        response = client.post(
+            client.post(
+                "/sso/break-glass/",
+                {"username": "firefighter", "password": "wrong"},
+                REMOTE_ADDR="203.0.113.7",
+            )
+
+        blocked = client.post(
             "/sso/break-glass/",
             {"username": "firefighter", "password": "a-real-password"},
+            REMOTE_ADDR="203.0.113.7",
         )
-        assert response.status_code == 302
+        assert blocked.status_code == 401, "the flooded address should be refused"
+
+        elsewhere = client.post(
+            "/sso/break-glass/",
+            {"username": "firefighter", "password": "a-real-password"},
+            REMOTE_ADDR="198.51.100.4",
+        )
+        assert elsewhere.status_code == 302, "the account was locked, not just the address"
 
 
 class TestCommand:

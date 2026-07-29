@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import ipaddress
 import logging
 from typing import Any
@@ -17,6 +18,10 @@ from bastion.breakglass.models import BreakGlassAccount
 from bastion.conf import get_setting
 
 logger = logging.getLogger(__name__)
+
+#: Reason recorded when an attempt is refused by the throttle. Named because it
+#: is also the reason excluded when counting, and those two uses must not drift.
+_THROTTLED = "throttled"
 
 
 class BreakGlassDenied(Exception):
@@ -45,6 +50,49 @@ def is_break_glass(user: Any) -> bool:
 def _config() -> dict[str, Any]:
     config: dict[str, Any] = get_setting("BREAK_GLASS")
     return config
+
+
+def _recent_failures(client_ip: str | None) -> int:
+    """Count recent credential failures from one address.
+
+    Counted from the audit log rather than from a cache. The cache is the
+    conventional place for this and it is the wrong one here: Django's default
+    ``locmem`` backend is per-process, so a deployment on four workers gets four
+    independent counters and four times the limit, and every counter resets on
+    restart. The audit log is already written on every attempt, is shared by
+    every worker, and survives a restart.
+
+    Throttled attempts are deliberately not counted. Counting them would let
+    continued hammering hold the window open forever, which turns a throttle
+    into an indefinite lockout of whoever shares that address.
+    """
+    if not client_ip:
+        return 0
+
+    from bastion.audit.models import AuditEvent
+
+    window = int(_config().get("FAILURE_WINDOW_SECONDS", 900))
+    cutoff = timezone.now() - dt.timedelta(seconds=window)
+
+    return (
+        AuditEvent.objects.filter(
+            # event_type first so the (event_type, occurred_at) index does the work.
+            event_type=Event.PROTOCOL_FALLBACK,
+            occurred_at__gte=cutoff,
+            auth_protocol="break_glass",
+            source_ip=client_ip,
+            outcome__in=(str(Outcome.FAILURE), str(Outcome.DENIED)),
+        )
+        .exclude(reason=_THROTTLED)
+        .count()
+    )
+
+
+def _is_throttled(client_ip: str | None) -> bool:
+    limit = int(_config().get("MAX_FAILURES_PER_IP", 5))
+    if limit <= 0:
+        return False
+    return _recent_failures(client_ip) >= limit
 
 
 def _network_allows(client_ip: str | None) -> bool:
@@ -82,6 +130,19 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
     if not _network_allows(client_ip):
         _record(None, Outcome.DENIED, "network", request)
         raise BreakGlassDenied("network")
+
+    # Before the password work, so that a flood costs the attacker a query and
+    # not a KDF round each time.
+    #
+    # Throttling is per source address and never per account. Locking the
+    # account after N failures is what a normal login should do and exactly
+    # what this one must not: anyone able to reach the form could then disable
+    # the emergency route by failing against it, which is the outage this
+    # feature exists to survive. An address can be abandoned; the fire escape
+    # cannot.
+    if _is_throttled(client_ip):
+        _record(None, Outcome.DENIED, _THROTTLED, request)
+        raise BreakGlassDenied(_THROTTLED)
 
     user_model = get_user_model()
     try:
