@@ -2,12 +2,15 @@
 
 ## Bus factor: 1
 
-One maintainer. If they stop, this project stops.
+One maintainer. It is at the top rather than buried, because it is the first thing anyone evaluating an
+authentication dependency should know and a vendor risk assessment will find it anyway.
 
-We state that at the top rather than burying it, because it is the first thing anyone evaluating an
-authentication dependency should know, and because a vendor risk assessment will find it anyway. If you are
-considering depending on this package for something you cannot afford to fork, weigh that above any
-feature in the README.
+The realistic failure mode is delay: a security report waits longer for a fix, a release waits longer for a
+new Django. Losing the code is not the failure mode, since Apache-2.0 covers that and a fork inherits the
+test suite and the CI matrix rather than an orphan. [MAINTAINERS.md](MAINTAINERS.md) has the longer version.
+
+Weigh that above any feature in the README if you are considering this for something you cannot afford to
+fork.
 
 Raising this number is a tracked deliverable, not an aspiration. The target is a second maintainer with
 commit and release rights, from a different organisation, before 1.0. Progress is tracked in the
