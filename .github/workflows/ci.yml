@@ -39,8 +39,13 @@ jobs:
         run: |
           ! grep -rn --include='*.py' -E '^\s*assert ' src/
       - name: No verification-disabling flags outside tests
+        # `strict=False` was in this list and does not belong: the only use in
+        # the tree is ipaddress.ip_network(net, strict=False), where it permits
+        # host bits in a CIDR and disables no checking at all. A guard that
+        # cries wolf on correct code gets switched off, so it names only flags
+        # that mean what it says.
         run: |
-          ! grep -rn --include='*.py' -E 'verify\s*=\s*False|insecure\s*=\s*True|strict\s*=\s*False|# ?nosec' src/
+          ! grep -rn --include='*.py' -E 'verify\s*=\s*False|insecure\s*=\s*True|check_hostname\s*=\s*False|# ?nosec' src/
 
   typecheck:
     runs-on: ubuntu-latest
