@@ -22,7 +22,7 @@ nox.options.sessions = ["lint", "typecheck", "tests", "migrations"]
 
 PYTHONS = ["3.11", "3.12", "3.13", "3.14"]
 DJANGOS = ["5.2", "6.0", "6.1"]
-DATABASES = ["sqlite", "postgres", "mysql"]
+DATABASES = ["sqlite", "postgres", "mysql", "mariadb"]
 
 # Django 6.x dropped Python 3.11.
 EXCLUDED = {(py, dj) for py in ["3.11"] for dj in ["6.0", "6.1"]}
@@ -63,7 +63,9 @@ def tests_db(session: nox.Session, database: str) -> None:
     session.install("-e", ".[oidc]", "--group", "dev")
     if database == "postgres":
         session.install("psycopg[binary]>=3.2")
-    elif database == "mysql":
+    elif database in ("mysql", "mariadb"):
+        # One driver for both: MariaDB speaks the MySQL wire protocol, and
+        # Django's mysql backend asks the server which it is.
         session.install("mysqlclient>=2.2")
     session.env["BASTION_TEST_DB"] = database
     session.run("pytest", *session.posargs)

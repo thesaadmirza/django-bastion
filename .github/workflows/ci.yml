@@ -114,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        database: [postgres, mysql]
+        database: [postgres, mysql, mariadb]
     services:
       postgres:
         image: postgres:16
@@ -133,6 +133,17 @@ jobs:
           --health-cmd "mysqladmin ping" --health-interval 10s
           --health-timeout 5s --health-retries 5
         ports: ["3306:3306"]
+      # 10.6 rather than something current, because the support matrix names
+      # 10.6 as the floor and the floor is the version most likely to break.
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: bastion
+          MARIADB_DATABASE: bastion
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+        ports: ["3307:3306"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
