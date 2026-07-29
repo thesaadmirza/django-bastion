@@ -4,9 +4,15 @@
 |---|---|---|---|
 | Saad Mirza | [@thesaadmirza](https://github.com/thesaadmirza) | everything | not yet published |
 
-Release tags are signed. Until a fingerprint appears above, treat tag signatures
-as unverified — an unverifiable signature is worse than none, because it invites
-the assumption that someone checked.
+Release tags are not signed yet, and the fingerprint column is empty because
+there is nothing to put in it. Do not infer anything from a tag's provenance.
+
+What you can check instead: every release is published from
+[`.github/workflows/release.yml`](.github/workflows/release.yml) through PyPI
+Trusted Publishing, and the distributions carry PEP 740 attestations naming
+that workflow and this repository. That is a stronger statement than a
+signature nobody can verify against a published key, which is what the row
+above would otherwise be inviting.
 
 ## Bus factor: 1
 

@@ -89,9 +89,12 @@ A release is cut only from a tag whose name matches the version in `pyproject.to
 suite passes on the oldest and newest supported interpreters. Nothing on that path restores a build cache,
 because a cache is writable from any branch and an attestation would faithfully certify a poisoned wheel.
 
-Every GitHub Action is pinned to a full commit SHA, with the tag kept in a trailing comment. Git tags are
-signed; maintainer key fingerprints are in [MAINTAINERS.md](MAINTAINERS.md), and until one appears there,
-treat tag signatures as unverified.
+Every GitHub Action is pinned to a full commit SHA, with the tag kept in a trailing comment.
+
+Git tags are not signed yet, so do not treat a tag as evidence of anything. The attestation on the
+distribution is the artefact to check, and it is verifiable today against this repository and that
+workflow. [MAINTAINERS.md](MAINTAINERS.md) says the same thing and will carry a key fingerprint when there
+is one.
 
 If you find a way to get code into a release that does not go through that path, that is a High severity
 report and we want to hear about it.
