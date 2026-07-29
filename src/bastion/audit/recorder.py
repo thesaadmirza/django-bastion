@@ -74,7 +74,7 @@ def emit(
         payload["actor_pseudonym"] = _pseudonym_for(actor)
 
     if request is not None:
-        payload.setdefault("source_ip", _client_ip(request))
+        payload.setdefault("source_ip", client_address(request))
         session_key = getattr(getattr(request, "session", None), "session_key", None)
         if session_key:
             # Hashed: the raw key is a live credential, and an audit table is
@@ -103,8 +103,12 @@ def _pseudonym_for(actor: Any) -> str:
         return ""
 
 
-def _client_ip(request: Any) -> str | None:
+def client_address(request: Any) -> str | None:
     """The client address as the application sees it.
+
+    Public because the break-glass throttle counts audit rows by ``source_ip``
+    and so has to derive the value the same way this does. Two copies of this
+    policy would have to agree by coincidence.
 
     Deliberately reads ``REMOTE_ADDR`` only. Parsing ``X-Forwarded-For`` here
     would mean trusting a header the client controls unless the deployment is
