@@ -10,11 +10,20 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing has been released yet. The version in `pyproject.toml` is `0.0.1a0`
-and no artefact has been published to PyPI, so there is no upgrade path to
-document and no public API to consider stable.
+Nothing since 0.0.1a0.
 
-What exists so far:
+## [0.0.1a0] - 2026-07-29
+
+First release. Alpha here means the API can change in any later version, patch
+releases included, and nothing is promised about upgrades until 1.0.
+
+Thinly tested it is not. 694 tests run on every commit across Python 3.11 to
+3.14 and Django 5.2, 6.0 and 6.1, against PostgreSQL 16, MySQL 8.4 and SQLite.
+A separate run stands up a real Django project, installs the built wheel into
+it, and signs in through an OIDC provider over TLS. Four modules carry a 100%
+coverage gate rather than the repository's 95%: `protocols`, `audit`,
+`breakglass` and `claims`, on the grounds that a mistake in any of them is
+expensive and quiet.
 
 ### Added
 
@@ -38,4 +47,5 @@ What exists so far:
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/commits/main
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a0...HEAD
+[0.0.1a0]: https://github.com/thesaadmirza/django-bastion/releases/tag/v0.0.1a0

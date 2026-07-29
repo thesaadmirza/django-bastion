@@ -4,8 +4,15 @@ Enterprise SSO and identity governance for Django. Puts the admin behind your id
 the group claim into staff and superuser rights, records who got what and when, and leaves you a fire
 escape for the morning the provider is down.
 
-> **Status: pre-alpha.** Nothing is published to PyPI yet. The quickstart below is the working
-> configuration, not a sketch of one. Where something is designed but not built, it says so.
+> **Status: alpha, version 0.0.1a0.** The API can change in any later version, patch releases included,
+> and nothing is promised about upgrades until 1.0. OIDC works end to end. SAML, SCIM and the rule engine
+> do not exist yet, and the pages that mention them say so.
+
+```bash
+pip install --pre django-bastion
+```
+
+`--pre` is not optional: 0.0.1a0 is a pre-release, and pip skips those unless asked.
 
 ## Quickstart
 
