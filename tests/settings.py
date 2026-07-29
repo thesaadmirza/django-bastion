@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 
-# Long enough to satisfy security.W009. Still not a secret; this is the suite.
-SECRET_KEY = "wQ7k2LpZ9vXn4RtY8mHbF3sJdA6cE1gU5oI0yTqNxVwPzKrMlBhGjSfDaCeZ"
+# Long enough to satisfy security.W009, and written so nobody has to wonder.
+# A random-looking string here would read as a leaked key in a public
+# repository and would trip secret scanners that cannot know any better.
+SECRET_KEY = "not-a-secret-this-is-the-test-suite-" + "x" * 24
 DEBUG = False
 ALLOWED_HOSTS = [
     "testserver",
