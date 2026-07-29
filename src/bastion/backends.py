@@ -33,6 +33,7 @@ from bastion.audit import emit
 from bastion.audit.events import Event, Outcome, Severity
 from bastion.claims import IdentityClaims
 from bastion.connections import Connection
+from bastion.db import retry_on_lock_contention
 from bastion.models import FederatedIdentity
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,24 @@ class SSOBackend(BaseBackend):
 
     # ------------------------------------------------------------- resolution --
 
+    @retry_on_lock_contention()
     @transaction.atomic
     def resolve_or_provision(
         self, claims: IdentityClaims, connection: Connection
     ) -> AbstractBaseUser | None:
+        """Find the federated identity or create it, with the user behind it.
+
+        The retry is outside the atomic block and not inside it, which is the
+        only place it can work: a deadlock marks the whole transaction for
+        rollback, so reissuing anything nested within it fails on the first
+        query. This is also the transaction that every audit write during a
+        login is nested inside, so their own retry defers to this one.
+
+        The shape here is the one InnoDB deadlocks on -- select_for_update
+        against a row that may not exist, then create it -- and two people
+        signing in for the first time at once is not a rare event on the
+        morning a provider is switched on.
+        """
         identity = (
             FederatedIdentity.objects.select_for_update()
             .filter(issuer=claims.issuer, subject=claims.subject)
