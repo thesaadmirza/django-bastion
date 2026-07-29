@@ -4,8 +4,8 @@ Enterprise SSO and identity governance for Django. Puts the admin behind your id
 claims to roles as reviewable data rather than code, records an audit trail, and gives you a fire escape
 for when the IdP is down.
 
-> **Status: pre-alpha.** Nothing is published yet. This README describes the target API, and it is a
-> design contract: if the quickstart below stops fitting on one screen, the design has gone wrong.
+> **Status: pre-alpha.** Nothing is published to PyPI yet. The quickstart below is the working
+> configuration, not a sketch of one. Where something is designed but not built, it says so.
 
 ## Quickstart
 
@@ -25,8 +25,8 @@ AUTHENTICATION_BACKENDS = ["bastion.backends.SSOBackend"]
 BASTION = {
     "CONNECTIONS": {
         "corp": {
-            "protocol": "oidc",
-            "discovery": "https://login.microsoftonline.com/<tenant-id>/v2.0",
+            "provider": "entra",
+            "issuer": "https://login.microsoftonline.com/<tenant-id>/v2.0",
             "client_id": env("BASTION_CLIENT_ID"),
             "client_secret": env("BASTION_CLIENT_SECRET"),
             "staff_groups": ["django-staff"],
@@ -65,41 +65,21 @@ Working around that is a known source of redirect loops and of the "authenticate
 We subclass `AdminSite` (the documented seam) and fail with a real 403 page that tells the person which
 group they're missing and who to ask.
 
-**Claims map to roles as data.** Ordered rules with a serializable condition tree, editable in the admin or
-declared in settings, and the same object either way.
+**Claims map to roles, and in 0.1 that mapping is deliberately small.** Two lists per connection,
+`staff_groups` and `superuser_groups`, matched against the group claim. That is all of it. The ordered rule
+engine with a serializable condition tree is the 0.2 design and is not built yet;
+[the roadmap](docs/explanation/roadmap.md) says what it will look like and which two approaches were
+already rejected.
 
-```python
-from bastion.rules import Claim
+**Break-glass you can actually rely on.** Creating one requires a written reason. Using one alerts a
+channel that does not depend on the identity provider, which matters because the outage that sends you
+here may be the provider itself. Both outcomes are recorded at critical severity, so a failed attempt is
+as visible as a successful one, and the account set can be restricted by network.
 
-BASTION["MAPPING"]["RULES"] = [
-    {
-        "name": "Engineering admins",
-        "order": 10,
-        "condition": Claim("groups").contains("eng-admins")
-                     & ~Claim("employment", "type").eq("contractor"),
-        "effects": [AddGroup("sso-editors"), SetFlag("is_staff", True)],
-    },
-]
-```
-
-**Every decision explains itself.** The question a security review always asks is why a particular person
-has admin access. That has a click-through answer here, recorded with the login:
-
-```
-rule #10 "Engineering admins"      MATCHED
-  groups contains 'eng-admins'        → True  (claim value: ['eng-admins','all-staff'])
-  NOT employment.type == 'contractor' → True  (claim value: 'fte')
-  → add_group(sso-editors), set_flag(is_staff=True)
-rule #20 "Contractors read-only"   no match
-final: groups={sso-editors}, is_staff=True, denied=False
-```
-
-You can also run the rules against claims you paste in, or against your whole existing user table, before
-saving a change.
-
-**Break-glass that is a real feature.** Time-boxed, reason-required, alert-on-use, and exempt from the
-directory sync so the nightly job can't delete your fire escape. Nothing else in the Django ecosystem ships
-this; we checked, and five plausible PyPI names are all unclaimed.
+The model also refuses to delete the last active account. Deleting your way to zero is the sort of thing
+people do while tidying up, and the consequence only appears during the incident that needed it. There is
+a drill command for the same reason: an emergency account nobody has ever signed in with is an emergency
+account nobody knows works.
 
 **An audit log built for the people who will ask for it.** Append-only, hash-chained, with the field set
 that NIST AU-3, PCI 10.2.2 and ISO 27002 8.15 independently converge on, plus a gapless sequence number so
