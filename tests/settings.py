@@ -85,6 +85,11 @@ def _database() -> dict[str, object]:
         return connection("django.db.backends.postgresql", "postgres", "5432")
     if backend == "mysql":
         return connection("django.db.backends.mysql", "root", "3306")
+    if backend == "mariadb":
+        # Django's mysql backend drives both, and it asks the server which one
+        # it is talking to. Separate here only so the two can run side by side
+        # on one machine, and so a failure names which server produced it.
+        return connection("django.db.backends.mysql", "root", "3307")
     return {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}
 
 
