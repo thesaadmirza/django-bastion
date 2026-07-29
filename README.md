@@ -110,8 +110,8 @@ Worth reading before you adopt it.
 
 ## Requirements
 
-Python 3.11+, Django 5.2 LTS or newer. PostgreSQL is what we recommend in production, and SQLite and
-MySQL both pass the full test suite. MariaDB has not been tested. Oracle is not supported.
+Python 3.11+, Django 5.2 LTS or newer. PostgreSQL is what we recommend in production. SQLite, MySQL and
+MariaDB all pass the full test suite on every push. Oracle is not supported.
 [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md) has the versions each backend was actually run against, and the
 version-dropping policy.
 

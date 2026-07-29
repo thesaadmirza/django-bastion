@@ -37,11 +37,15 @@ The floor rises to 3.12 when we drop Django 5.2, and not before.
 | **1** | PostgreSQL 14+ | Recommended for production. The suite passes and nothing had to be worked around to get there. |
 | **2** | SQLite 3.37+ | The suite passes. Three concurrency tests skip, because SQLite serialises writes and a lock race cannot be observed either way. Fine for development, CI and single-node evaluation. |
 | **3** | MySQL 8.0+ | The suite passes, after the deadlock fix described below. |
-| — | MariaDB 10.6+ | Untested. An earlier version of this file claimed support. Nothing had been run against it. |
+| **3** | MariaDB 10.6+ | The suite passes. Django's MySQL backend drives both, and MariaDB needed nothing MySQL did not. |
 | — | Oracle | Not supported. We will not accept Oracle bug reports. |
 
-Versions actually exercised: PostgreSQL 16.9 and MySQL 8.4.11 at 655 tests each, SQLite at 652 passed and
-3 skipped.
+Versions actually exercised: PostgreSQL 16.9, MySQL 8.4.11, MariaDB 10.6.27 and 11.4.12, each at 695
+tests, and SQLite at 692 passed with 3 skipped. Every one of those runs happens in CI on each push, so the
+table above stays a test result rather than a recollection.
+
+MariaDB is tested at 10.6 in CI rather than at a current release, because 10.6 is the floor this table
+claims and the floor is the version most likely to break. 11.4 was run by hand and passed identically.
 
 ### The MySQL deadlock
 
