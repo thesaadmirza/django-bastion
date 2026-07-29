@@ -57,10 +57,16 @@ $ python manage.py migrate
 $ python manage.py bastion_doctor
 ```
 
-`bastion_doctor` checks the whole path end to end before a user ever hits it: discovery document
-reachable, JWKS fetchable, signing algorithms compatible, redirect URI registered, clock skew against the
-IdP, group claim actually present, and at least one break-glass account configured. Most SSO debugging is
-a config typo three layers down, and nothing else surfaces it.
+`bastion_doctor` walks the path before anyone tries to use it. It reaches the provider for the discovery
+document, the JWKS and the signing algorithms, compares your clock against theirs, and works through the
+local half from the session engine to whether break-glass has anyone to alert.
+
+Three things it will not tell you are fine. Whether the redirect URI is actually registered at the
+provider, whether the group claim is emitted and in what shape, and whether MFA will really be asserted:
+none of those can be known without a person completing a real login, so they come back marked unverifiable
+with the reason attached. A run that quietly skipped them would read better and help less. Most SSO
+debugging is a config typo three layers down, and a green tick over an unasked question is how you lose an
+afternoon to it.
 
 That is the entire happy path. Everything below is optional.
 
@@ -97,11 +103,12 @@ an exported sample can be shown to be complete.
 Worth reading before you adopt it.
 
 - **If you only need social login,** use [django-allauth](https://docs.allauth.org/). It is mature, it has
-  every provider, and this package is not trying to replace it. We ship an adapter so the two compose.
+  every provider, and this package is not trying to replace it.
 - **If you're a B2B SaaS and can expense it,** WorkOS or Stytch will get you enterprise SSO faster than
-  building will, at around $125 per connection per month. We're the better answer when self-hosting is a
-  requirement rather than a preference, when the Django admin itself is the thing you need behind SSO
-  (which those products do not solve at all), or when connection count makes per-connection pricing hurt.
+  building will. Check their current per-connection pricing rather than trusting a figure in someone's
+  README. We're the better answer when self-hosting is a requirement rather than a preference, when the
+  Django admin itself is the thing you need behind SSO, or when connection count makes per-connection
+  pricing hurt.
 - **If you need only OIDC and nothing else,** [mozilla-django-oidc](https://github.com/mozilla/mozilla-django-oidc)
   is about 1,200 lines and you can read all of it in twenty minutes. That legibility is a real feature.
   Come here when you need the governance layer on top.
@@ -115,8 +122,9 @@ MariaDB all pass the full test suite on every push. Oracle is not supported.
 [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md) has the versions each backend was actually run against, and the
 version-dropping policy.
 
-SAML support is an opt-in extra (`pip install django-bastion[saml]`) because it pulls in xmlsec, which
-needs system packages. The common case does not need it.
+There is a `[saml]` extra, and installing it today gets you pysaml2 and nothing else, because the SAML
+implementation does not exist yet. The extra is reserved so the install line will not change on the day it
+does, and it stays optional because pysaml2 pulls in xmlsec, which needs system packages.
 
 ## Documentation
 
