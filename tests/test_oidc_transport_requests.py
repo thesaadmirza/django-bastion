@@ -133,6 +133,21 @@ class TestPostForm:
         assert status == 400
         assert body == {"error": "invalid_grant"}
 
+    def test_an_error_response_is_closed(self, monkeypatch) -> None:
+        """HTTPError is a file object over the socket. Leaving it to the garbage
+        collector leaks a descriptor for every error a provider returns, which
+        is a slow leak that only shows up when the provider is unhealthy.
+
+        CI caught this as a ResourceWarning on Linux; macOS collected soon
+        enough to hide it.
+        """
+        error = urllib.error.HTTPError(
+            URL, 400, "Bad Request", {}, io.BytesIO(b'{"error": "invalid_grant"}')
+        )
+        stub_urlopen(monkeypatch, error)
+        UrllibTransport().post_form(URL, data={})
+        assert error.closed, "the error response was left open"
+
 
 class TestServerTime:
     def test_a_date_header_is_parsed(self, monkeypatch) -> None:

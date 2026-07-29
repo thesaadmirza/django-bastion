@@ -93,7 +93,14 @@ class UrllibTransport:
         except urllib.error.HTTPError as exc:
             # An error response still has a body worth parsing (RFC 6749 5.2),
             # so it is returned rather than raised.
-            return exc.code, self.read_capped(exc)
+            #
+            # Closed explicitly. HTTPError is a file object over the socket, and
+            # the success path above gets closed by its `with`; this one used to
+            # be left to the garbage collector, which leaks a descriptor per
+            # error response. A provider returning 400s is exactly when that
+            # accumulates.
+            with exc:
+                return exc.code, self.read_capped(exc)
         except urllib.error.URLError as exc:
             raise TransportError(f"request to {request.full_url} failed") from exc
         except TimeoutError as exc:
