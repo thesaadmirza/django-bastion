@@ -123,10 +123,10 @@ Worth reading before you adopt it.
 
 ## Requirements
 
-Python 3.11+, Django 5.2 LTS or newer. PostgreSQL is Tier 1 and the only configuration we recommend in
-production; SQLite is fully supported for development and evaluation; MySQL and MariaDB are best-effort and
-the package will tell you at startup which integrity guarantees it cannot enforce there. Oracle is not
-supported. [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md) has the dated grid and the version-dropping policy.
+Python 3.11+, Django 5.2 LTS or newer. PostgreSQL is what we recommend in production, and SQLite and
+MySQL both pass the full test suite. MariaDB has not been tested. Oracle is not supported.
+[SUPPORT_MATRIX.md](SUPPORT_MATRIX.md) has the versions each backend was actually run against, and the
+version-dropping policy.
 
 SAML support is an opt-in extra (`pip install django-bastion[saml]`) because it pulls in xmlsec, which
 needs system packages. The common case does not need it.

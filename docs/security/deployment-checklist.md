@@ -102,9 +102,13 @@ python manage.py bastion_doctor
 
 ## Database
 
-- [ ] PostgreSQL, or you have read the startup warning naming which integrity
-      guarantees your backend cannot enforce. MySQL, MariaDB and Oracle silently
-      ignore conditional constraints rather than erroring on them.
+- [ ] PostgreSQL, SQLite or MySQL. Those three are the ones the suite is run
+      against; MariaDB is untested and Oracle is unsupported. The uniqueness
+      constraints are enforced on all three, confirmed by introspection.
+- [ ] On MySQL, you are running a version of this package that retries a
+      deadlocked audit append. Without it, InnoDB gap locks on the chain head
+      drop audit records under concurrent logins, and chain verification still
+      reports the log as clean.
 - [ ] The application database user cannot `UPDATE` or `DELETE` the audit tables.
       The append-only guard in the model stops accidents, not intent.
 

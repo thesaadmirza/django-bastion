@@ -48,7 +48,12 @@ def tests(session: nox.Session, django: str) -> None:
 @nox.session(python=PYTHONS[-1])
 @nox.parametrize("database", DATABASES)
 def tests_db(session: nox.Session, database: str) -> None:
-    """Cross-database run. Tier 3 backends are expected to xfail constraint tests."""
+    """Cross-database run. Every backend runs the whole suite and is expected
+    to pass it; nothing here is xfailed.
+
+    The concurrency tests skip on SQLite, which serialises writes and so cannot
+    show a lock race either way. That is a skip, not a tolerated failure.
+    """
     session.install("-e", ".[oidc]", "--group", "dev")
     if database == "postgres":
         session.install("psycopg[binary]>=3.2")
