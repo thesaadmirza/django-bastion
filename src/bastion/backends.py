@@ -271,7 +271,16 @@ class SSOBackend(BaseBackend):
 
 
 def user_username_field() -> str:
-    return get_user_model().USERNAME_FIELD
+    """The field the configured user model logs in with.
+
+    The one place that reads USERNAME_FIELD. Django declares it on
+    AbstractUser rather than AbstractBaseUser, because each user model is
+    required to define it instead of inheriting one -- so every valid
+    AUTH_USER_MODEL has it and no static type can say so. mypy's plugin
+    resolves the concrete model; checkers without the plugin see the stub, and
+    suppressing that once here beats suppressing it at every call site.
+    """
+    return get_user_model().USERNAME_FIELD  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def _has_field(name: str) -> bool:

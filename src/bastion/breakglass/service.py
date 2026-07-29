@@ -179,7 +179,12 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
 
     user_model = get_user_model()
     try:
-        user = user_model._default_manager.get(**{user_model.USERNAME_FIELD: username})
+        # Imported here rather than at module scope: bastion.backends imports
+        # the models, and this module is loaded while the app registry is still
+        # populating them.
+        from bastion.backends import user_username_field
+
+        user = user_model._default_manager.get(**{user_username_field(): username})
     except user_model.DoesNotExist:
         # Hash anyway. Skipping the work here is a timing oracle that says
         # whether the account exists, and this endpoint is one an attacker

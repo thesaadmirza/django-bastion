@@ -23,7 +23,7 @@ import datetime as dt
 import hashlib
 import json
 import secrets
-from typing import Any, NoReturn
+from typing import Any, ClassVar, NoReturn
 
 from django.conf import settings
 from django.db import models, transaction
@@ -125,6 +125,38 @@ class AuditEventQuerySet(models.QuerySet["AuditEvent"]):
         return self.filter(actor_pseudonym=pseudonym)
 
 
+class AuditEventManager(models.Manager["AuditEvent"]):
+    """Written out rather than produced by ``QuerySet.as_manager()``.
+
+    Same reason as the break-glass manager: ``as_manager()`` builds these at
+    runtime, so only a checker running the django-stubs plugin knows they
+    exist. Anyone reading the audit log from an editor without it gets an error
+    on a call that works.
+    """
+
+    def get_queryset(self) -> AuditEventQuerySet:
+        return AuditEventQuerySet(self.model, using=self._db)
+
+    def in_order(self) -> AuditEventQuerySet:
+        return self.get_queryset().in_order()
+
+    def for_actor(self, pseudonym: str) -> AuditEventQuerySet:
+        return self.get_queryset().for_actor(pseudonym)
+
+    def failures_from(
+        self,
+        source_ip: str,
+        *,
+        since: dt.datetime,
+        protocol: str,
+        limit: int,
+        ignoring: str = "",
+    ) -> int:
+        return self.get_queryset().failures_from(
+            source_ip, since=since, protocol=protocol, limit=limit, ignoring=ignoring
+        )
+
+
 class AppendOnly(Exception):
     """Raised on any attempt to modify or remove a recorded event."""
 
@@ -179,7 +211,10 @@ class AuditEvent(models.Model):
     record_hash = models.CharField(max_length=64, editable=False)
     schema_version = models.PositiveSmallIntegerField(default=SCHEMA_VERSION)
 
-    objects = AuditEventQuerySet.as_manager()
+    # Annotated, not just assigned: Model declares objects as
+    # ClassVar[Manager[Self]], and without the django-stubs plugin that
+    # declaration wins over the assignment.
+    objects: ClassVar[AuditEventManager] = AuditEventManager()
 
     class Meta:
         verbose_name = "audit event"

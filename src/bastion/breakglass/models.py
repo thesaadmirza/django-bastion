@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
+from typing import Any, ClassVar
 
 from django.conf import settings
 from django.db import models
@@ -26,6 +26,27 @@ class BreakGlassAccountQuerySet(models.QuerySet["BreakGlassAccount"]):
         return self.active().filter(
             models.Q(last_validated_at__isnull=True) | models.Q(last_validated_at__lt=cutoff)
         )
+
+
+class BreakGlassAccountManager(models.Manager["BreakGlassAccount"]):
+    """Written out rather than produced by ``QuerySet.as_manager()``.
+
+    ``as_manager()`` builds the methods at runtime, so only a type checker
+    running the django-stubs plugin knows they exist. Everyone on Pylance --
+    which is most people, since it is VS Code's default -- gets "Cannot access
+    attribute 'active'" on a call that works fine. Declaring the manager is a
+    dozen lines and makes the two methods real to every checker and every
+    editor.
+    """
+
+    def get_queryset(self) -> BreakGlassAccountQuerySet:
+        return BreakGlassAccountQuerySet(self.model, using=self._db)
+
+    def active(self) -> BreakGlassAccountQuerySet:
+        return self.get_queryset().active()
+
+    def stale(self, *, days: int = 90) -> BreakGlassAccountQuerySet:
+        return self.get_queryset().stale(days=days)
 
 
 class BreakGlassAccount(models.Model):
@@ -59,7 +80,11 @@ class BreakGlassAccount(models.Model):
     #: normal conditions, and a drill does not tell you it was needed.
     last_validated_at = models.DateTimeField(null=True, blank=True)
 
-    objects = BreakGlassAccountQuerySet.as_manager()
+    # Annotated, not just assigned. Model declares objects as
+    # ClassVar[Manager[Self]], which django-stubs' plugin deletes and replaces;
+    # without the plugin that declaration wins and the assignment below is
+    # widened back to a plain Manager.
+    objects: ClassVar[BreakGlassAccountManager] = BreakGlassAccountManager()
 
     class Meta:
         verbose_name = "break-glass account"

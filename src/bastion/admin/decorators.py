@@ -57,7 +57,11 @@ def sso_admin_login(view: Login) -> Login:
             return view(request, *args, **kwargs)
 
         if request.user.is_authenticated:
-            if not (request.user.is_active and request.user.is_staff):
+            # getattr for is_staff, matching views.py: it lives on AbstractUser
+            # rather than AbstractBaseUser, so a custom user model is not
+            # required to have it and a checker without the django-stubs plugin
+            # is right to say so. Absent means not staff, which is the safe read.
+            if not (request.user.is_active and getattr(request.user, "is_staff", False)):
                 return adapter.render_access_denied(request)
             return view(request, *args, **kwargs)
 

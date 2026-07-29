@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from bastion.audit import emit
 from bastion.audit.events import Event, Outcome, Severity
+from bastion.backends import user_username_field
 from bastion.breakglass.models import BreakGlassAccount, LastBreakGlassAccount
 from bastion.breakglass.service import notify
 from bastion.conf import get_setting
@@ -209,6 +210,6 @@ class Command(BaseCommand):
             raise CommandError("--user is required")
         model = get_user_model()
         try:
-            return model._default_manager.get(**{model.USERNAME_FIELD: options["user"]})
+            return model._default_manager.get(**{user_username_field(): options["user"]})
         except model.DoesNotExist as exc:
             raise CommandError(f"no user named {options['user']!r}") from exc
