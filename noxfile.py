@@ -29,10 +29,16 @@ EXCLUDED = {(py, dj) for py in ["3.11"] for dj in ["6.0", "6.1"]}
 
 
 def _django_spec(version: str) -> str:
+    """Pin to one Django series, release candidates included.
+
+    Prefix matching rather than a lower bound. ``>=6.1`` looks like it covers
+    the 6.1 series but excludes 6.1rc1, which sorts before 6.1 -- so a series
+    that has not had its final release yet resolves to nothing at all, and the
+    session fails to install rather than failing a test.
+    """
     if version == "main":
         return "https://github.com/django/django/archive/main.tar.gz"
-    major, minor = version.split(".")
-    return f"Django>={major}.{minor},<{major}.{int(minor) + 1}"
+    return f"Django=={version}.*"
 
 
 @nox.session(python=PYTHONS)
