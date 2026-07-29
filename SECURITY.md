@@ -75,9 +75,23 @@ previous one. Before 1.0, only the latest release gets fixes.
 
 ## Our own supply chain
 
-Releases are published through PyPI Trusted Publishing with no long-lived API tokens in existence, carry
-PEP 740 attestations, and ship a CycloneDX SBOM inside the wheel. Every GitHub Action is pinned to a full
-commit SHA. Git tags are signed; maintainer key fingerprints are in [MAINTAINERS.md](MAINTAINERS.md).
+Releases are published through PyPI Trusted Publishing, so no long-lived API token exists to be stolen:
+the workflow exchanges a short-lived OIDC identity with PyPI directly. Distributions carry PEP 740
+attestations, signed with that same identity and verifiable against this repository and
+[`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+A CycloneDX SBOM is generated from a clean environment holding the wheel and nothing else, and is attached
+to the corresponding [GitHub release](https://github.com/thesaadmirza/django-bastion/releases). It is not
+inside the wheel: PyPI accepts distributions only, and the standard for carrying one in a wheel
+([PEP 770](https://peps.python.org/pep-0770/)) has no build-backend support we can rely on yet.
+
+A release is cut only from a tag whose name matches the version in `pyproject.toml`, and only after the
+suite passes on the oldest and newest supported interpreters. Nothing on that path restores a build cache,
+because a cache is writable from any branch and an attestation would faithfully certify a poisoned wheel.
+
+Every GitHub Action is pinned to a full commit SHA, with the tag kept in a trailing comment. Git tags are
+signed; maintainer key fingerprints are in [MAINTAINERS.md](MAINTAINERS.md), and until one appears there,
+treat tag signatures as unverified.
 
 If you find a way to get code into a release that does not go through that path, that is a High severity
 report and we want to hear about it.
