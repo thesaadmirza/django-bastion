@@ -105,3 +105,83 @@ def test_every_audit_event_is_in_the_catalogue() -> None:
     text = (DOCS / "reference/audit-events.md").read_text(encoding="utf-8")
     missing = [event.value for event in Event if event.value not in text]
     assert not missing, f"events missing from the catalogue: {missing}"
+
+
+CONFIG_PAGES = [
+    "README.md",
+    "docs/tutorials/first-login.md",
+    "docs/how-to/idp/entra.md",
+]
+
+
+@pytest.mark.parametrize("page", CONFIG_PAGES)
+def test_documented_connection_keys_are_real(page: str) -> None:
+    """Every connection key shown in a copyable example must be one the loader
+    accepts.
+
+    This exists because the README quickstart spent its whole life advertising
+    ``protocol`` and ``discovery``, neither of which is a field. Anyone who
+    pasted it got a ConfigurationError on the first request, and the two pages
+    that walk through the same setup disagreed with it.
+    """
+    import re
+
+    from bastion.connections import Connection
+
+    text = (ROOT / page).read_text(encoding="utf-8")
+    real = set(Connection.__dataclass_fields__) - {"identifier"}
+
+    # Keys inside a CONNECTIONS block, which is the only place these appear.
+    blocks = re.findall(r'"CONNECTIONS"\s*:\s*\{(.*?)\n    \},', text, re.DOTALL)
+    assert blocks, f"{page} shows no CONNECTIONS block"
+
+    documented = set()
+    for block in blocks:
+        # quirks_kwargs carries provider-specific names rather than connection
+        # fields, so its contents are checked separately below.
+        flat = re.sub(r'"quirks_kwargs"\s*:\s*\{[^}]*\}', "", block)
+        documented |= set(re.findall(r'"([a-z_]+)"\s*:', flat))
+
+    # The connection name itself is a key of CONNECTIONS, not of a connection.
+    documented -= {"corp"}
+
+    unknown = documented - real
+    assert not unknown, f"{page} documents connection keys that do not exist: {sorted(unknown)}"
+
+
+@pytest.mark.parametrize("page", CONFIG_PAGES)
+def test_documented_quirks_kwargs_are_accepted(page: str) -> None:
+    """quirks_kwargs is passed straight to the provider adapter, so a name that
+    adapter does not take is a TypeError on the first login rather than a
+    configuration error at startup."""
+    import inspect
+    import re
+
+    from bastion.protocols.oidc.quirks import REGISTRY
+
+    text = (ROOT / page).read_text(encoding="utf-8")
+    for provider, kwargs_block in re.findall(
+        r'"provider"\s*:\s*"(\w+)".*?"quirks_kwargs"\s*:\s*\{([^}]*)\}', text, re.DOTALL
+    ):
+        adapter = REGISTRY[provider]
+        accepted = set(inspect.signature(adapter).parameters)
+        documented = set(re.findall(r'"([a-z_]+)"\s*:', kwargs_block))
+        unknown = documented - accepted
+        assert not unknown, f"{page}: {provider} does not accept {sorted(unknown)}"
+
+
+@pytest.mark.parametrize("page", CONFIG_PAGES)
+def test_documented_connections_have_what_the_loader_requires(page: str) -> None:
+    """A copyable example missing a required key fails at startup, which is a
+    worse first impression than no example."""
+    import re
+
+    from bastion.connections import _REQUIRED
+
+    text = (ROOT / page).read_text(encoding="utf-8")
+    blocks = re.findall(r'"CONNECTIONS"\s*:\s*\{(.*?)\n    \},', text, re.DOTALL)
+
+    for block in blocks:
+        keys = set(re.findall(r'"([a-z_]+)"\s*:', block))
+        missing = set(_REQUIRED) - keys
+        assert not missing, f"{page} shows a connection missing {sorted(missing)}"
