@@ -133,19 +133,33 @@ _cache: dict[str, Connection] = {}
 _cache_lock = threading.Lock()
 
 
+#: Keys that were plausible enough to be worth naming in the error, because
+#: silently accepting one and then ignoring it is how a deployment ends up
+#: pointed at a provider nobody configured.
+_RENAMED_KEYS = {
+    "discovery": "issuer",
+    "protocol": "provider",
+}
+
+
 def build_connection(identifier: str, config: dict[str, Any]) -> Connection:
     """Turn one settings entry into a Connection, or explain why not."""
     unknown = set(config) - set(Connection.__dataclass_fields__)
-    unknown -= {"discovery"}
     if unknown:
-        raise ConfigurationError(f"connection {identifier!r} has unknown keys: {sorted(unknown)}")
+        hints = [
+            f"{key!r} (did you mean {_RENAMED_KEYS[key]!r}?)"
+            for key in sorted(unknown)
+            if key in _RENAMED_KEYS
+        ]
+        plain = sorted(unknown - set(_RENAMED_KEYS))
+        detail = ", ".join(hints + [repr(k) for k in plain])
+        raise ConfigurationError(f"connection {identifier!r} has unknown keys: {detail}")
 
     for name in _REQUIRED:
         if not config.get(name):
             raise ConfigurationError(f"connection {identifier!r} is missing {name!r}")
 
     kwargs = dict(config)
-    kwargs.pop("discovery", None)
     for key in ("scopes", "staff_groups", "superuser_groups"):
         if key in kwargs:
             kwargs[key] = tuple(kwargs[key])
