@@ -1,11 +1,25 @@
 # Audit event catalogue
 
-Every event type this package emits, with what it means and why it is recorded.
+Every event type this package defines, with what it means and why it is
+recorded.
 
 Publishing this list is the NIST **AU-2(a)/(c)/(d)** deliverable: identify what
 the system can log, specify what it does log, and give a rationale for why that
 selection supports after-the-fact investigation. Without it, customers write it
 by hand from source, badly.
+
+Those first two are different questions, and this page used to answer only the
+first while claiming to answer both. **Fourteen of the thirty names below are
+reserved and no code path emits them yet**, and each is marked. It matters
+because an auditor reading an unmarked `auth.logout` row would go looking for
+logout records, and there are none. The rest of the vocabulary is here because
+renaming an event later breaks every SIEM rule written against it, so the names
+are fixed before the emitters land.
+
+Three tests hold this page to it: every name in `bastion.audit.events.Event`
+has to appear here, every event with no emitter has to be marked reserved, and
+every event that gains one has to lose the marker. Wiring up an emitter without
+updating this page fails the suite.
 
 Event names are **stable public API**. Renaming one breaks anyone whose SIEM
 rules or compliance evidence reference it.
@@ -17,24 +31,24 @@ rules or compliance evidence reference it.
 | `auth.login.succeeded` | A session is established | The baseline population for an access review |
 | `auth.login.failed` | Authentication did not complete | Emitted on the failure path too — a failed login is the event most worth having |
 | `auth.login.denied` | Authenticated, then refused | **Kept distinct from failure.** An authorisation denial and an authentication failure are different detections under SOC 2 CC7.2; collapsing them loses the signal that someone's credentials work but their access does not |
-| `auth.logout` | Session ended deliberately | |
-| `auth.session.revoked` | Session ended by an administrator or the provider | |
+| `auth.logout` | **Reserved, not emitted yet.** Session ended deliberately | |
+| `auth.session.revoked` | **Reserved, not emitted yet.** Session ended by an administrator or the provider | |
 | `auth.assertion.rejected` | Signature, issuer, audience, nonce, replay or clock validation failed | High signal. This is what a token forgery attempt looks like |
 | `auth.protocol.fallback` | Break-glass was used or attempted | Rare by design, critical severity, always alerts |
-| `auth.mfa.required` | A connection requires a second factor | |
-| `auth.mfa.satisfied` | The assertion showed one | The only durable evidence an MFA requirement was met at the moment of access |
-| `auth.mfa.missing` | It did not, and the login was refused | |
+| `auth.mfa.required` | **Reserved, not emitted yet.** A connection requires a second factor | |
+| `auth.mfa.satisfied` | **Reserved, not emitted yet.** The assertion showed one | The only durable evidence an MFA requirement was met at the moment of access |
+| `auth.mfa.missing` | **Reserved, not emitted yet.** It did not, and the login was refused | |
 
 ## Identity lifecycle
 
 | Event | Recorded when |
 |---|---|
 | `user.provisioned` | A local account is created by a first login |
-| `user.updated` | Attributes changed from claims |
-| `user.deactivated` | An account was disabled |
-| `user.reactivated` | An account was re-enabled |
+| `user.updated` | **Reserved, not emitted yet.** Attributes changed from claims |
+| `user.deactivated` | **Reserved, not emitted yet.** An account was disabled |
+| `user.reactivated` | **Reserved, not emitted yet.** An account was re-enabled |
 | `user.identity_linked` | A provider identity was attached to a local user |
-| `user.identity_unlinked` | It was detached |
+| `user.identity_unlinked` | **Reserved, not emitted yet.** It was detached |
 | `user.identity_source_conflict` | The provider asserted a subject under a different claim than the link was made with |
 
 `identity_linked` is frequently missing from packages and frequently the root
@@ -50,9 +64,9 @@ stranding the original's permissions.
 | Event | Recorded when |
 |---|---|
 | `role.granted` / `role.revoked` | A privilege flag changed |
-| `mapping.evaluated` | Claims were mapped to roles |
+| `mapping.evaluated` | **Reserved, not emitted yet.** Claims were mapped to roles |
 | `mapping.incomplete` | Group data arrived truncated, so escalation was refused |
-| `entitlement.snapshot` | Point-in-time record of who holds what |
+| `entitlement.snapshot` | **Reserved, not emitted yet.** Point-in-time record of who holds what |
 
 `mapping.incomplete` is the one to alert on. Entra above its overage threshold
 sends a pointer to Microsoft Graph rather than the groups themselves; the login
@@ -67,9 +81,9 @@ automatically yet — that is a gap.
 
 | Event | Recorded when |
 |---|---|
-| `idp.connection.changed` | A connection's configuration changed |
-| `idp.jwks.refreshed` | The signing key set was refetched |
-| `idp.metadata.refreshed` | The discovery document was refetched |
+| `idp.connection.changed` | **Reserved, not emitted yet.** A connection's configuration changed |
+| `idp.jwks.refreshed` | **Reserved, not emitted yet.** The signing key set was refetched |
+| `idp.metadata.refreshed` | **Reserved, not emitted yet.** The discovery document was refetched |
 
 ## The audit log's own operations
 

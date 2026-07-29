@@ -107,6 +107,60 @@ def test_every_audit_event_is_in_the_catalogue() -> None:
     assert not missing, f"events missing from the catalogue: {missing}"
 
 
+def emitted_and_reserved() -> tuple[set[str], set[str]]:
+    """Split the event vocabulary by whether any code path emits it."""
+    import re
+
+    from bastion.audit.events import Event
+
+    referenced: set[str] = set()
+    for path in (ROOT / "src/bastion").rglob("*.py"):
+        if path.name == "events.py":
+            continue
+        referenced |= set(re.findall(r"Event\.([A-Z_]+)", path.read_text(encoding="utf-8")))
+
+    emitted = {e.value for e in Event if e.name in referenced}
+    return emitted, {e.value for e in Event} - emitted
+
+
+def test_reserved_events_are_marked_as_such() -> None:
+    """The catalogue is the AU-2 deliverable, which separates what the system
+    can log from what it does log.
+
+    Fourteen names were listed with a plain "Recorded when" and no emitter, so
+    an auditor would have gone looking for logout records that do not exist.
+    """
+    catalogue = (DOCS / "reference/audit-events.md").read_text(encoding="utf-8")
+    _, reserved = emitted_and_reserved()
+
+    unmarked = [
+        value
+        for value in sorted(reserved)
+        if not any(
+            line.startswith(f"| `{value}` |") and "Reserved" in line
+            for line in catalogue.splitlines()
+        )
+    ]
+    assert not unmarked, f"reserved events not marked in the catalogue: {unmarked}"
+
+
+def test_emitted_events_are_not_marked_reserved() -> None:
+    """The other direction: wiring up an emitter has to clear its marker, or
+    the page starts understating what is available."""
+    catalogue = (DOCS / "reference/audit-events.md").read_text(encoding="utf-8")
+    emitted, _ = emitted_and_reserved()
+
+    stale = [
+        value
+        for value in sorted(emitted)
+        if any(
+            line.startswith(f"| `{value}` |") and "Reserved" in line
+            for line in catalogue.splitlines()
+        )
+    ]
+    assert not stale, f"these events are emitted but still marked reserved: {stale}"
+
+
 CONFIG_PAGES = [
     "README.md",
     "docs/tutorials/first-login.md",
