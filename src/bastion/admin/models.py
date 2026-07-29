@@ -24,8 +24,7 @@ if TYPE_CHECKING:
     _IdentityAdmin = admin.ModelAdmin[FederatedIdentity]
     _EventAdmin = admin.ModelAdmin[AuditEvent]
 else:
-    _IdentityAdmin = admin.ModelAdmin
-    _EventAdmin = admin.ModelAdmin
+    _IdentityAdmin = _EventAdmin = admin.ModelAdmin
 
 
 @admin.register(FederatedIdentity)

@@ -133,12 +133,17 @@ _cache: dict[str, Connection] = {}
 _cache_lock = threading.Lock()
 
 
-#: Keys that were plausible enough to be worth naming in the error, because
-#: silently accepting one and then ignoring it is how a deployment ends up
+#: Keys an older quickstart taught, mapped to what to do now. Worth naming
+#: because silently accepting one and ignoring it is how a deployment ends up
 #: pointed at a provider nobody configured.
+#:
+#: The advice differs per key rather than being a rename table: 'discovery'
+#: carried the same value 'issuer' now does, but 'protocol' was dropped
+#: outright, and telling someone to rename it to 'provider' would send them
+#: into a second failure when 'oidc' turns out not to be a provider name.
 _RENAMED_KEYS = {
-    "discovery": "issuer",
-    "protocol": "provider",
+    "discovery": "use 'issuer', which takes the same URL",
+    "protocol": f"drop it, and set 'provider' to one of {sorted(REGISTRY)}",
 }
 
 
@@ -146,13 +151,12 @@ def build_connection(identifier: str, config: dict[str, Any]) -> Connection:
     """Turn one settings entry into a Connection, or explain why not."""
     unknown = set(config) - set(Connection.__dataclass_fields__)
     if unknown:
-        hints = [
-            f"{key!r} (did you mean {_RENAMED_KEYS[key]!r}?)"
-            for key in sorted(unknown)
-            if key in _RENAMED_KEYS
-        ]
-        plain = sorted(unknown - set(_RENAMED_KEYS))
-        detail = ", ".join(hints + [repr(k) for k in plain])
+        detail = ", ".join(
+            f"{key!r} ({_RENAMED_KEYS[key]})" if key in _RENAMED_KEYS else repr(key)
+            # Renamed keys first: a reader who recognises one of theirs should
+            # not have to scan past unrelated typos to find the answer.
+            for key in sorted(unknown, key=lambda k: (k not in _RENAMED_KEYS, k))
+        )
         raise ConfigurationError(f"connection {identifier!r} has unknown keys: {detail}")
 
     for name in _REQUIRED:

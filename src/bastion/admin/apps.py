@@ -16,20 +16,15 @@ substitution has to happen in ``AppConfig.ready()``, before
 
 from __future__ import annotations
 
-from django.contrib.admin.apps import AdminConfig
+from django.contrib.admin import apps as admin_apps
 
 
-class BastionAdminConfig(AdminConfig):
-    #: Django scans this module for AppConfig subclasses and treats every one
-    #: with a truthy ``default`` as a candidate. ``AdminConfig`` sets it, and we
-    #: inherit it, so without saying which is ours the entry ``"bastion.admin"``
-    #: fails with "declares more than one default AppConfig".
-    default = True
+class BastionAdminConfig(admin_apps.AdminConfig):
+    # The base is reached through the module rather than imported by name on
+    # purpose. Django scans this module for AppConfig subclasses and treats
+    # every one with a truthy ``default`` as a candidate; importing the name
+    # would bind a second candidate here, and the entry ``"bastion.admin"``
+    # would fail with "declares more than one default AppConfig" naming a
+    # Django class the reader never configured. A module is not a class, so the
+    # scan finds only this one.
     default_site = "bastion.admin.site.SSOAdminSite"
-
-
-# The base class stays reachable through __bases__; what this removes is the
-# module-level name, which is what Django's inspect.getmembers scan walks.
-# Without it the scan still sees two candidates and refuses to choose, and the
-# error names Django's class rather than anything the reader configured.
-del AdminConfig
