@@ -14,6 +14,7 @@ from django.utils.module_loading import import_string
 
 from bastion.audit import emit
 from bastion.audit.events import Event, Outcome, Severity
+from bastion.audit.recorder import client_address
 from bastion.breakglass.models import BreakGlassAccount
 from bastion.conf import get_setting
 
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 #: Reason recorded when an attempt is refused by the throttle. Named because it
 #: is also the reason excluded when counting, and those two uses must not drift.
 _THROTTLED = "throttled"
+
+#: Value written to the audit record's auth_protocol, and matched on when
+#: counting. Same reason for naming it.
+_PROTOCOL = "break_glass"
 
 
 class BreakGlassDenied(Exception):
@@ -52,8 +57,12 @@ def _config() -> dict[str, Any]:
     return config
 
 
-def _recent_failures(client_ip: str | None) -> int:
-    """Count recent credential failures from one address.
+def _window_start() -> dt.datetime:
+    return timezone.now() - dt.timedelta(seconds=_config()["FAILURE_WINDOW_SECONDS"])
+
+
+def _is_throttled(client_ip: str) -> bool:
+    """Whether this address has already spent its allowance of failures.
 
     Counted from the audit log rather than from a cache. The cache is the
     conventional place for this and it is the wrong one here: Django's default
@@ -62,37 +71,51 @@ def _recent_failures(client_ip: str | None) -> int:
     restart. The audit log is already written on every attempt, is shared by
     every worker, and survives a restart.
 
-    Throttled attempts are deliberately not counted. Counting them would let
-    continued hammering hold the window open forever, which turns a throttle
-    into an indefinite lockout of whoever shares that address.
+    Refusals are excluded from the count. Counting them would let continued
+    hammering hold the window open forever, which turns a throttle into an
+    indefinite lockout of whoever shares that address.
     """
-    if not client_ip:
-        return 0
-
     from bastion.audit.models import AuditEvent
 
-    window = int(_config().get("FAILURE_WINDOW_SECONDS", 900))
-    cutoff = timezone.now() - dt.timedelta(seconds=window)
-
-    return (
-        AuditEvent.objects.filter(
-            # event_type first so the (event_type, occurred_at) index does the work.
-            event_type=Event.PROTOCOL_FALLBACK,
-            occurred_at__gte=cutoff,
-            auth_protocol="break_glass",
-            source_ip=client_ip,
-            outcome__in=(str(Outcome.FAILURE), str(Outcome.DENIED)),
-        )
-        .exclude(reason=_THROTTLED)
-        .count()
-    )
-
-
-def _is_throttled(client_ip: str | None) -> bool:
-    limit = int(_config().get("MAX_FAILURES_PER_IP", 5))
+    limit: int = _config()["MAX_FAILURES_PER_IP"]
     if limit <= 0:
         return False
-    return _recent_failures(client_ip) >= limit
+
+    seen = AuditEvent.objects.failures_from(
+        client_ip,
+        since=_window_start(),
+        protocol=_PROTOCOL,
+        limit=limit,
+        ignoring=_THROTTLED,
+    )
+    return seen >= limit
+
+
+def _already_refused(client_ip: str) -> bool:
+    """Whether this address has been refused already inside the window.
+
+    Takes a plain ``str``: this only runs after ``_is_throttled`` returned
+    true, which cannot happen without an address.
+
+    Used to record the refusal once rather than once per attempt. Recording
+    each one is what makes a throttle worse than no throttle: every refusal
+    would append a chained audit row, which serialises on the chain head
+    against every other audit write in the system, and fire the alert sinks
+    synchronously. A flood would then cost more the longer it ran, and the
+    growing rows would be scanned by the next attempt.
+
+    One record per address per window keeps the evidence and drops the
+    amplification.
+    """
+    from bastion.audit.models import AuditEvent
+
+    return AuditEvent.objects.filter(
+        event_type=Event.PROTOCOL_FALLBACK,
+        occurred_at__gte=_window_start(),
+        auth_protocol=_PROTOCOL,
+        source_ip=client_ip,
+        reason=_THROTTLED,
+    ).exists()
 
 
 def _network_allows(client_ip: str | None) -> bool:
@@ -120,13 +143,20 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
 
     Every outcome is audited at critical severity and every outcome fires the
     alert sinks, including failures. A wrong password on an emergency account
-    is more interesting than a successful login on a normal one.
+    is more interesting than a successful login on a normal one. The one
+    exception is a repeat refusal from an address already refused this window,
+    which is recorded once rather than once per attempt.
     """
     config = _config()
     if not config.get("ENABLED"):
         raise BreakGlassDenied("disabled")
 
-    client_ip = getattr(request, "META", {}).get("REMOTE_ADDR") if request else None
+    # The recorder's resolver, not a second copy. The throttle compares its
+    # answer against source_ip values the recorder wrote, so two definitions of
+    # "the client address" would have to agree by coincidence -- and they did
+    # not: this used to yield "" where the recorder stores NULL, so a blank
+    # REMOTE_ADDR silently matched nothing.
+    client_ip = client_address(request) if request else None
     if not _network_allows(client_ip):
         _record(None, Outcome.DENIED, "network", request)
         raise BreakGlassDenied("network")
@@ -140,8 +170,11 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
     # the emergency route by failing against it, which is the outage this
     # feature exists to survive. An address can be abandoned; the fire escape
     # cannot.
-    if _is_throttled(client_ip):
-        _record(None, Outcome.DENIED, _THROTTLED, request)
+    # No address means nothing to key on, so nothing to throttle. Refusing an
+    # addressless request is the network allowlist's job, above.
+    if client_ip and _is_throttled(client_ip):
+        if not _already_refused(client_ip):
+            _record(None, Outcome.DENIED, _THROTTLED, request)
         raise BreakGlassDenied(_THROTTLED)
 
     user_model = get_user_model()

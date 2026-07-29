@@ -132,6 +132,46 @@ class TestThrottleDoesNotLockTheFireEscape:
             "refusals kept the window open, so hammering is a lockout"
         )
 
+    def test_a_flood_does_not_cost_more_the_longer_it_runs(self, rf, account) -> None:
+        """The refusal is recorded once per address per window, not per attempt.
+
+        Recording each one made the throttle worse than no throttle. Every
+        refusal appended a chained audit row, which serialises on the chain head
+        against every other audit write in the system, and fired the alert sinks
+        synchronously. The rows also landed in the range the next attempt
+        scanned, so a flood grew its own cost as it ran.
+        """
+        fail(rf, 3)
+        for _ in range(40):
+            with pytest.raises(BreakGlassDenied):
+                attempt(rf, "wrong-password")
+
+        rows = AuditEvent.objects.filter(auth_protocol="break_glass").count()
+        assert rows == 4, (
+            f"43 attempts wrote {rows} audit rows; the refusal should be recorded "
+            "once per window, so this should be the 3 failures plus 1"
+        )
+
+    def test_each_address_is_recorded_on_its_own(self, rf, account) -> None:
+        """Recording once per window must mean once per address.
+
+        If the "already refused" test ignored the address, the first attacker
+        would suppress the record for every later one, and a second source
+        would be throttled with nothing in the audit log to say so.
+        """
+        fail(rf, 3, ip="10.0.0.5")
+        with pytest.raises(BreakGlassDenied):
+            attempt(rf, PASSWORD, ip="10.0.0.5")
+
+        fail(rf, 3, ip="10.0.0.99")
+        with pytest.raises(BreakGlassDenied):
+            attempt(rf, PASSWORD, ip="10.0.0.99")
+
+        refused = set(
+            AuditEvent.objects.filter(reason="throttled").values_list("source_ip", flat=True)
+        )
+        assert refused == {"10.0.0.5", "10.0.0.99"}
+
     def test_the_window_rolls_off(self, rf, account) -> None:
         fail(rf, 3)
         stale = timezone.now() - dt.timedelta(seconds=1000)
@@ -142,6 +182,16 @@ class TestThrottleDoesNotLockTheFireEscape:
         settings.BASTION["BREAK_GLASS"]["MAX_FAILURES_PER_IP"] = 0
         fail(rf, 6)
         assert attempt(rf, PASSWORD).username == "rescue"
+
+    def test_a_request_with_no_address_is_not_throttled(self, rf, account) -> None:
+        """Nothing to key on, so there is nothing to throttle. The network
+        allowlist is what refuses an addressless request when one is set."""
+        request = rf.post("/")
+        request.META.pop("REMOTE_ADDR", None)
+        assert (
+            authenticate_break_glass(username="rescue", password=PASSWORD, request=request).username
+            == "rescue"
+        )
 
     def test_a_successful_login_does_not_count(self, rf, account) -> None:
         for _ in range(4):
