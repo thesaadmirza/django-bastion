@@ -115,6 +115,37 @@ def check_breakglass_alerting(app_configs: Any, **kwargs: Any) -> list[CheckMess
 
 
 @register(Tags.security)
+def check_breakglass_throttle_storage(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
+    """The throttle counts failures out of the audit table.
+
+    That is what makes it survive a restart and hold across workers, and it
+    means removing the database sink turns the throttle off without saying so.
+    A silently absent security control is worse than a documented absent one.
+    """
+    config = get_setting("BREAK_GLASS")
+    if not config.get("ENABLED") or not config.get("MAX_FAILURES_PER_IP"):
+        return []
+
+    sinks = get_setting("AUDIT").get("SINKS", [])
+    if any("DatabaseSink" in str(sink) for sink in sinks):
+        return []
+
+    return [
+        Error(
+            "Break-glass throttling is on but no audit DatabaseSink is configured.",
+            hint=(
+                "MAX_FAILURES_PER_IP counts failures from the audit table, so "
+                'without "bastion.audit.sinks.DatabaseSink" in '
+                'BASTION["AUDIT"]["SINKS"] nothing is counted and the throttle '
+                "never fires. Add the sink, or set MAX_FAILURES_PER_IP to 0 to "
+                "say you meant to run without it."
+            ),
+            id="bastion.E101",
+        )
+    ]
+
+
+@register(Tags.security)
 def check_session_engine(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
     """Deprovisioning cannot revoke sessions the engine will not let us find.
 
