@@ -182,6 +182,11 @@ pythonVersion = "3.11"
 # --------------------------------------------------------------------------- #
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"
+# Without this, `tests.settings` is only importable when pytest is started as
+# `python -m pytest`, which puts the working directory on sys.path. A bare
+# `pytest`, which is what CI and most editors run, does not, and pytest-django
+# fails to import the settings module before collection begins.
+pythonpath = ["."]
 addopts = "--strict-markers --strict-config -ra"
 testpaths = ["tests"]
 filterwarnings = ["error"]
