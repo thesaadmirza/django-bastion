@@ -88,7 +88,14 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: uv run --with "Django~=${{ matrix.django }}.0" --group dev pytest --cov=bastion
+      # --prerelease=allow because 6.1 is not out yet: only 6.1rc1 exists, and
+      # the resolver skips prereleases by default, so this cell failed to
+      # resolve rather than failing a test. The classifiers claim 6.1 support,
+      # and testing the release candidate is what makes that claim true rather
+      # than aspirational.
+      - run: >-
+          uv run --prerelease=allow --with "Django~=${{ matrix.django }}.0"
+          --group dev pytest --cov=bastion
 
   tests-databases:
     runs-on: ubuntu-latest
