@@ -10,7 +10,62 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a0.
+Nothing since 0.0.1a1.
+
+## [0.0.1a1] - 2026-07-30
+
+Three of these are faults on the authentication path and one of them stopped
+Entra deployments before the first login. Upgrade over 0.0.1a0.
+
+None were found by the test suite. Two came from following the tutorial twice
+against providers on different ports, one from someone pointing the package at
+a live Entra tenant, and one from reading a document against the source it
+described. Worth saying, because the suite passing is what 0.0.1a0 was released
+on.
+
+### Fixed
+
+- **Signing in returned a 500 when the username was already taken.** The
+  username is derived from the subject and the identity is keyed on
+  `(issuer, subject)`, so changing an issuer URL makes every existing person
+  look new while their username is still held. Adding a second connection for
+  the same directory does the same. The insert now happens in a savepoint and
+  raises `ProvisioningConflict`, which renders the ordinary failure page. The
+  accounts are not linked automatically: selecting a local user by a
+  provider-supplied value is the shape of allauth CVE-2025-65431.
+- **Any error from the authentication backend was a 500.** The callback's
+  handler covered `complete_login` and stopped there, leaving provisioning and
+  resolution outside it, so a backend refusal produced a stack trace on a
+  request anyone can make. Refusals now get the same page, audit record and
+  correlation reference as a rejected assertion.
+- **Discovery refused providers that do not advertise PKCE methods.**
+  `code_challenge_methods_supported` is optional under RFC 8414 and Microsoft's
+  v2.0 document omits it while accepting S256, so `bastion_doctor` failed every
+  Entra deployment on its first run and advised turning off `require_s256` --
+  a flag that also silences a provider genuinely refusing S256. An absent field
+  is now reported as unverifiable. A field present without S256 still fails.
+  Nothing about the request changed: `code_challenge_method` has always been
+  hardcoded to S256.
+
+### Changed
+
+- `require_s256` governs a provider that advertises a method set excluding
+  S256. It is no longer the answer to a provider that advertises nothing.
+
+### Documentation
+
+- The audit catalogue said it listed every event the package emits. Fourteen of
+  the thirty had no emitter, including `auth.logout`, which was documented as
+  recorded when a session ends. Each is now marked reserved, and two tests keep
+  the markers honest in both directions.
+- The crypto inventory listed `c_hash` and an RFC 7638 thumbprint. Neither is
+  computed: `c_hash` belongs to the hybrid flow, and `kid` is read from the
+  provider rather than derived.
+- The README claimed `bastion_doctor` checks the redirect URI registration and
+  the group claim, which are the two things it most conspicuously cannot and
+  reports as unverifiable. It also described an allauth adapter that does not
+  exist and a SAML extra whose implementation does not exist.
+- MariaDB is tested now, at 10.6 and 11.4, and CI runs it on every push.
 
 ## [0.0.1a0] - 2026-07-29
 
@@ -47,5 +102,6 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a0...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a1...HEAD
+[0.0.1a1]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a0...v0.0.1a1
 [0.0.1a0]: https://github.com/thesaadmirza/django-bastion/releases/tag/v0.0.1a0
