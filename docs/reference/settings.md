@@ -50,7 +50,7 @@ One entry per provider. Keys map to `Connection` fields.
 | `superuser_groups` | `()` | Membership grants `is_superuser`. **Two-way** — revoked when the group goes |
 | `require_mfa` | `False` | Refuses logins whose assertion shows no second factor. Verify with one sign-in first; `amr` is opt-in on several providers |
 | `require_group_match` | `False` | Refuse sign-in entirely with no matching group, rather than authenticating without privileges |
-| `require_s256` | `True` | Only lower it for a provider that supports S256 without advertising it, and record why |
+| `require_s256` | `True` | Refuses a provider that advertises a PKCE method set **without** S256. A provider that advertises nothing is not refused: the field is optional under RFC 8414 and Entra omits it. Lower this only for a provider whose metadata understates it, and record why |
 
 The staff/superuser asymmetry is deliberate: a provider hiccup should not lock
 every administrator out of the admin, but a revoked superuser must lose it at

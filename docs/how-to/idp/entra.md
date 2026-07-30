@@ -101,6 +101,14 @@ python manage.py bastion_doctor
 
 ## Things that will surprise you
 
+**No advertised PKCE methods.** Entra's v2.0 discovery document has no
+`code_challenge_methods_supported` field at all, though it accepts S256
+without complaint. The field is optional under RFC 8414, so `bastion_doctor`
+reports PKCE as unverifiable rather than failing, and this package sends S256
+and never `plain` regardless. Leave `require_s256` alone: it governs a provider
+that advertises a method set *excluding* S256, which is a different and worse
+situation than saying nothing.
+
 **No `email_verified`.** Entra does not emit it. The package reports the address
 as `Unknown` rather than guessing, because defaulting to false breaks every
 login and defaulting to true is a hole. The nearest analogue is `xms_edov`,
