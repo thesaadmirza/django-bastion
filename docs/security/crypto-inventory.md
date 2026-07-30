@@ -3,7 +3,7 @@
 Every algorithm, key and library this package touches. Public-sector and
 regulated reviewers ask for this and almost nobody has it ready.
 
-Last reviewed: 2026-07-30, against version 0.0.1a1.
+Last reviewed: 2026-07-30, against version 0.0.1a2.
 
 ## Libraries
 

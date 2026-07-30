@@ -1,7 +1,7 @@
 # Roadmap
 
 What exists, what does not, and what would change the answer. Dated 2026-07-28
-at version 0.0.1a1.
+at version 0.0.1a2.
 
 ## Now
 

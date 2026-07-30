@@ -129,6 +129,37 @@ def test_the_package_reports_the_version_it_was_built_as() -> None:
     )
 
 
+def test_no_page_states_a_version_that_is_not_this_one() -> None:
+    """Version strings in prose drift, because bumping pyproject does not touch
+    them and nobody greps.
+
+    Two of them are load-bearing rather than decorative: the crypto inventory
+    and the roadmap both say "as of version X", which is how a reader tells
+    whether a statement still applies. A wrong number there is worse than none.
+
+    The changelog is exempt: it is a history, so old versions are the point.
+    """
+    import tomllib
+
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
+    pattern = re.compile(r"\b\d+\.\d+\.\d+(?:a|b|rc)?\d*\b")
+
+    stale: dict[str, list[str]] = {}
+    for path in [ROOT / "README.md", *sorted(DOCS.rglob("*.md"))]:
+        found = {
+            v
+            for v in pattern.findall(path.read_text(encoding="utf-8"))
+            # Only our own release line; Django and Python versions live here too.
+            if v.startswith("0.0.1")
+        }
+        if found - {declared}:
+            stale[str(path.relative_to(ROOT))] = sorted(found - {declared})
+
+    assert not stale, f"pages naming a version other than {declared}: {stale}"
+
+
 def test_the_changelog_has_a_section_for_this_version() -> None:
     """A release with no entry is one nobody can find out about."""
     import tomllib

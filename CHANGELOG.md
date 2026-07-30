@@ -10,6 +10,13 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+Nothing since 0.0.1a2.
+
+## [0.0.1a2] - 2026-07-30
+
+One fix. Nothing on the authentication path changed, so upgrade at your
+convenience unless you care what the package says its version is.
+
 ### Fixed
 
 - **The package misreported its own version.** `__version__` was a literal in
@@ -17,6 +24,9 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   shipped announcing itself as 0.0.1a0. It is now read from the installed
   distribution, which cannot drift, and two tests check that the package,
   `pyproject.toml` and the changelog all agree before a release goes out.
+
+  Found by running the smoke test against the published wheel rather than
+  trusting the release job's green tick.
 
 ## [0.0.1a1] - 2026-07-30
 
@@ -108,6 +118,7 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a1...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a2...HEAD
+[0.0.1a2]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a1...v0.0.1a2
 [0.0.1a1]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a0...v0.0.1a1
 [0.0.1a0]: https://github.com/thesaadmirza/django-bastion/releases/tag/v0.0.1a0
