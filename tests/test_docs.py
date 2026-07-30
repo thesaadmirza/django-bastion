@@ -97,6 +97,27 @@ def test_the_settings_reference_covers_every_default() -> None:
     assert not undocumented, f"undocumented settings: {undocumented}"
 
 
+def test_the_check_id_table_matches_the_checks() -> None:
+    """The table is what someone reads to write `SILENCED_SYSTEM_CHECKS`.
+
+    It is maintained by hand, so it drifts the moment a check is added, and an
+    id that is silenced-by-copy-paste from a stale table silences nothing.
+    Both directions matter: an undocumented check is unsilenceable in practice,
+    and a documented id that no longer exists is a promise the code dropped.
+    """
+    source = (ROOT / "src/bastion/checks.py").read_text(encoding="utf-8")
+    text = (DOCS / "reference/settings.md").read_text(encoding="utf-8")
+
+    emitted = set(re.findall(r'id="(bastion\.[EW]\d+)"', source))
+    documented = set(re.findall(r"`(bastion\.[EW]\d+)`", text))
+
+    assert emitted, "no check ids found in checks.py; the pattern has drifted"
+    assert not emitted - documented, (
+        f"checks missing from the table: {sorted(emitted - documented)}"
+    )
+    assert not documented - emitted, f"table lists absent checks: {sorted(documented - emitted)}"
+
+
 def test_every_audit_event_is_in_the_catalogue() -> None:
     """Publishing the catalogue is the NIST AU-2 deliverable. An event the
     package emits but does not list makes that deliverable wrong."""
