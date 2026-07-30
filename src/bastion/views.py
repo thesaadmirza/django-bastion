@@ -125,7 +125,34 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
 
     from django.contrib.auth import authenticate
 
-    user = authenticate(request, sso_identity=result.identity, sso_connection=resolved)
+    try:
+        user = authenticate(request, sso_identity=result.identity, sso_connection=resolved)
+    except BastionError as exc:
+        # Provisioning and resolution happen inside authenticate(), and used to
+        # be outside every handler here: a username collision surfaced as an
+        # unhandled IntegrityError and a 500 on the callback. Anything the
+        # backend refuses gets the same treatment as a refused assertion, which
+        # is a rendered page and an audit record rather than a traceback.
+        logger.warning(
+            "Could not resolve %s to a user on %s [ref %s]: %s",
+            result.identity.subject,
+            resolved.identifier,
+            reference,
+            type(exc).__name__,
+        )
+        emit(
+            Event.LOGIN_FAILED,
+            outcome=Outcome.FAILURE,
+            request=request,
+            severity=Severity.WARNING,
+            connection=resolved.identifier,
+            issuer=result.identity.issuer,
+            subject=result.identity.subject,
+            correlation_id=reference,
+            context={"error": type(exc).__name__},
+        )
+        return _failure(request, reference)
+
     if user is None:
         logger.warning(
             "Verified identity %s could not be resolved to a user [ref %s]",

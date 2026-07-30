@@ -89,6 +89,63 @@ def login(client: Client, connection: Connection, transport: FakeTransport, idp:
     return finish(client, connection, transport, idp, start(client), **kw)
 
 
+class TestBackendRefusals:
+    """Anything the auth backend raises has to reach a rendered page.
+
+    The try/except in the callback wrapped only complete_login, so provisioning
+    and resolution ran outside every handler. A username collision surfaced as
+    an unhandled IntegrityError and a 500, which is both a bad page and a
+    stack trace on a request an attacker can trigger.
+    """
+
+    def test_a_provisioning_conflict_renders_rather_than_500s(
+        self, client: Client, connection: Connection, transport: FakeTransport, idp: FakeIdP
+    ) -> None:
+        from django.contrib.auth import get_user_model
+
+        from bastion.claims import IdentityClaims
+
+        # Take the username the incoming subject would be provisioned under.
+        claims = IdentityClaims(
+            issuer=connection.issuer,
+            subject=idp.base_claims()["sub"],
+            subject_source="sub",
+        )
+        get_user_model().objects.create_user(username=claims.subject[:150])
+
+        response = login(client, connection, transport, idp)
+
+        assert response.status_code != 500, "a collision must not reach the 500 handler"
+        assert response.status_code in (400, 403)
+        assert SESSION_KEY not in client.session
+
+    def test_the_refusal_is_audited(
+        self, client: Client, connection: Connection, transport: FakeTransport, idp: FakeIdP
+    ) -> None:
+        from django.contrib.auth import get_user_model
+
+        from bastion.audit.models import AuditEvent
+
+        get_user_model().objects.create_user(username=idp.base_claims()["sub"][:150])
+        login(client, connection, transport, idp)
+
+        assert AuditEvent.objects.filter(event_type="auth.login.failed").exists()
+
+    def test_the_page_does_not_leak_the_reason(
+        self, client: Client, connection: Connection, transport: FakeTransport, idp: FakeIdP
+    ) -> None:
+        """Same policy as every other pre-session failure: one body, one code,
+        and a reference to correlate with the log."""
+        from django.contrib.auth import get_user_model
+
+        get_user_model().objects.create_user(username=idp.base_claims()["sub"][:150])
+        body = login(client, connection, transport, idp).content.decode().lower()
+
+        assert "integrityerror" not in body
+        assert "provisioningconflict" not in body
+        assert "traceback" not in body
+
+
 class TestHappyPath:
     def test_a_full_round_trip_establishes_a_session(
         self, client: Client, connection: Connection, transport: FakeTransport, idp: FakeIdP
