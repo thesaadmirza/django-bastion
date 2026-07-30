@@ -21,6 +21,8 @@ from django.conf import settings
 from django.core.checks import CheckMessage, Error, Tags, Warning, register
 
 from bastion.conf import get_setting
+from bastion.connections import build_connection
+from bastion.exceptions import ConfigurationError
 
 # Django's own defaults are wrong for a deployment that carries session
 # credentials for administrative access. We do not change them (that would be
@@ -148,6 +150,59 @@ def check_breakglass_throttle_storage(app_configs: Any, **kwargs: Any) -> list[C
             id="bastion.E101",
         )
     ]
+
+
+@register(Tags.security)
+def check_connections(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
+    """Every configured connection is buildable before anyone tries to log in.
+
+    Connections are built lazily, on the first request that needs one. That is
+    right for the network work they own, but it means a missing ``client_id``
+    or a typo'd key passes ``manage.py check`` and surfaces as a failed login
+    in staging -- the one place where the person hitting it can least tell a
+    configuration mistake from an outage.
+
+    Building is the validation, rather than a second list of required keys
+    kept in step with the first: unknown keys, unknown providers and bad
+    ``auth_method`` values are all caught here for free, and cannot drift.
+    Construction touches no network by design.
+    """
+    errors: list[CheckMessage] = []
+    connections = get_setting("CONNECTIONS")
+
+    for identifier in sorted(connections):
+        try:
+            # Deliberately not get_connection(): reporting every broken entry
+            # beats stopping at the first, and the check should not leave a
+            # half-populated cache behind.
+            build_connection(identifier, dict(connections[identifier]))
+        except ConfigurationError as exc:
+            errors.append(
+                Error(
+                    str(exc),
+                    hint=(
+                        "The connection is built on first use, so this would "
+                        "otherwise have appeared as a failed login rather than "
+                        'here. Fix the entry in BASTION["CONNECTIONS"].'
+                    ),
+                    id="bastion.E027",
+                )
+            )
+
+    admin_connection = get_setting("ADMIN").get("connection")
+    if admin_connection is not None and admin_connection not in connections:
+        errors.append(
+            Error(
+                f"ADMIN['connection'] is {admin_connection!r}, which is not configured.",
+                hint=(
+                    f"Configured: {sorted(connections) or 'none'}. A name that "
+                    "resolves to nothing leaves the admin with no way in "
+                    "except break-glass."
+                ),
+                id="bastion.E028",
+            )
+        )
+    return errors
 
 
 @register(Tags.security)

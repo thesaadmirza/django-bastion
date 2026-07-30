@@ -147,6 +147,8 @@ Silenceable individually via `SILENCED_SYSTEM_CHECKS`. Stable; do not renumber.
 | `bastion.E022` | Insecure cookie or missing HSTS |
 | `bastion.E023` | Password fallback alongside SSO with no break-glass |
 | `bastion.E026` | Identity key is not `(issuer, subject)` |
+| `bastion.E027` | A connection entry cannot be built |
+| `bastion.E028` | `ADMIN["connection"]` names a connection that is not configured |
 | `bastion.E100` | Break-glass enabled with no alert sink |
 | `bastion.E101` | Break-glass throttling on with no audit database sink to count from |
 | `bastion.W030` | Session engine cannot revoke individual sessions |
