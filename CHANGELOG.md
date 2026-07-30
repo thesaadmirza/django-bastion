@@ -10,7 +10,13 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a1.
+### Fixed
+
+- **The package misreported its own version.** `__version__` was a literal in
+  `bastion/__init__.py`, separate from the one in `pyproject.toml`, so 0.0.1a1
+  shipped announcing itself as 0.0.1a0. It is now read from the installed
+  distribution, which cannot drift, and two tests check that the package,
+  `pyproject.toml` and the changelog all agree before a release goes out.
 
 ## [0.0.1a1] - 2026-07-30
 

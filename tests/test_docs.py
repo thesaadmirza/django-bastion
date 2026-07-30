@@ -107,6 +107,37 @@ def test_every_audit_event_is_in_the_catalogue() -> None:
     assert not missing, f"events missing from the catalogue: {missing}"
 
 
+def test_the_package_reports_the_version_it_was_built_as() -> None:
+    """`bastion.__version__` and pyproject must agree.
+
+    They did not: `__version__` was a literal, so 0.0.1a1 shipped announcing
+    itself as 0.0.1a0. A package that misreports its own version turns every
+    bug report into a guess about which code the reporter was running.
+    """
+    import tomllib
+
+    import bastion
+
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
+    assert bastion.__version__ == declared, (
+        f"the package reports {bastion.__version__} and pyproject declares {declared}. "
+        "If you have just bumped the version, an editable install still carries the "
+        "metadata recorded when it was installed: rerun `pip install -e .` or "
+        "`nox -s tests`, which builds fresh."
+    )
+
+
+def test_the_changelog_has_a_section_for_this_version() -> None:
+    """A release with no entry is one nobody can find out about."""
+    import tomllib
+
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert f"## [{declared['project']['version']}]" in changelog
+
+
 def emitted_and_reserved() -> tuple[set[str], set[str]]:
     """Split the event vocabulary by whether any code path emits it."""
     import re
