@@ -70,6 +70,67 @@ class TestBreakGlassAlerting:
         assert checks.check_breakglass_alerting(None) == []
 
 
+GOOD = {"issuer": "https://idp.test", "client_id": "abc", "provider": "entra"}
+
+
+class TestConnections:
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, client_id="")}})
+    def test_empty_client_id_is_an_error(self) -> None:
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": {"client_id": "abc"}}})
+    def test_missing_issuer_is_an_error(self) -> None:
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, provider="nope")}})
+    def test_unknown_provider_is_an_error(self) -> None:
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, discovery="https://x.test")}})
+    def test_renamed_key_is_an_error(self) -> None:
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"a": {"client_id": "x"}, "b": {"issuer": "https://b.test"}}}
+    )
+    def test_every_broken_connection_is_reported(self) -> None:
+        """Not just the first. Fixing one at a time is how a deploy takes four tries."""
+        messages = checks.check_connections(None)
+        assert len(messages) == 2
+        assert {"'a'", "'b'"} <= {word for m in messages for word in str(m.msg).split()}
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    def test_valid_connection_passes(self) -> None:
+        assert checks.check_connections(None) == []
+
+    def test_no_connections_passes(self) -> None:
+        assert checks.check_connections(None) == []
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"corp": GOOD}, "ADMIN": {"connection": "typo"}},
+    )
+    def test_admin_pointing_at_nothing_is_an_error(self) -> None:
+        assert "bastion.E028" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}, "ADMIN": {"connection": "corp"}})
+    def test_admin_pointing_at_a_real_connection_passes(self) -> None:
+        assert checks.check_connections(None) == []
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    def test_unset_admin_connection_passes(self) -> None:
+        """None is the default and means the admin is not behind bastion."""
+        assert checks.check_connections(None) == []
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    def test_check_does_not_populate_the_connection_cache(self) -> None:
+        """Running checks must not decide what a later request gets served."""
+        from bastion import connections
+
+        connections._cache.clear()
+        checks.check_connections(None)
+        assert connections._cache == {}
+
+
 class TestSessionEngine:
     @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
     def test_signed_cookies_warns(self) -> None:
