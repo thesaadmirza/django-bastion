@@ -25,7 +25,7 @@ from typing import Any
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import BaseBackend
 from django.contrib.auth.models import AbstractBaseUser
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -34,6 +34,7 @@ from bastion.audit.events import Event, Outcome, Severity
 from bastion.claims import IdentityClaims
 from bastion.connections import Connection
 from bastion.db import retry_on_lock_contention
+from bastion.exceptions import ProvisioningConflict
 from bastion.models import FederatedIdentity
 
 logger = logging.getLogger(__name__)
@@ -171,12 +172,26 @@ class SSOBackend(BaseBackend):
 
     def create_user(self, claims: IdentityClaims, connection: Connection) -> AbstractBaseUser:
         user_model = get_user_model()
-        user = user_model(**self.user_attributes(claims, connection))
+        attributes = self.user_attributes(claims, connection)
+        user = user_model(**attributes)
         # Never a usable password. An account that can be reached with one is
         # an account that bypasses the identity provider.
         user.set_unusable_password()
         self.apply_flags(user, claims, connection)
-        user.save()
+
+        username = attributes.get(user_username_field())
+        try:
+            # Nested so the collision rolls back only the insert, leaving the
+            # caller's transaction usable enough to record why it failed.
+            with transaction.atomic():
+                user.save()
+        except IntegrityError as exc:
+            raise ProvisioningConflict(
+                f"cannot provision {username!r}: an account with that name already "
+                "exists and is not linked to this identity. Link the two "
+                "deliberately or rename one; this package will not adopt a local "
+                "account on the strength of a name the provider supplied."
+            ) from exc
         return user
 
     def update_user(

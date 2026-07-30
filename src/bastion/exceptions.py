@@ -160,6 +160,26 @@ class TransactionReplayed(TransactionError):
     """
 
 
+class ProvisioningConflict(BastionError):
+    """A new identity resolved to a username that already exists locally.
+
+    Raised rather than resolved, because every way of resolving it is worse.
+    Adopting the existing account would mean letting a provider-supplied name
+    select a local user, which is the account-takeover shape behind allauth
+    CVE-2025-65431 and the reason ``IDENTITY.KEY`` is ``(issuer, subject)``.
+    Renaming the incoming user to something free hands somebody an account
+    under a name they did not choose and nobody can predict.
+
+    The ordinary cause is benign: a site with existing Django accounts putting
+    its admin behind SSO, where the first person to sign in already has a local
+    login. It also appears when an issuer URL changes, since the identity is
+    keyed on it, and when a second connection serves people who already signed
+    in through the first.
+
+    An operator resolves it by linking the two deliberately, or renaming one.
+    """
+
+
 class DiscoveryError(BastionError):
     """The provider's metadata could not be fetched or is unusable."""
 
