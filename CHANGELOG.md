@@ -10,6 +10,24 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+### Added
+
+- **Connections are validated by `manage.py check`.** They are built on first
+  use, so a missing `client_id` or a mistyped key used to pass every check and
+  surface as a failed login — in staging, where the person hitting it cannot
+  tell a configuration mistake from an outage. `bastion.E027` reports every
+  broken entry rather than stopping at the first, and `bastion.E028` catches an
+  `ADMIN["connection"]` that names a connection nobody configured. Validation
+  is the existing loader, not a second list of required keys, so unknown keys
+  and unknown providers come along for free and cannot drift out of step.
+
+  An install with no connections configured still starts, which is what makes
+  `pip install` followed by `manage.py check` a sensible first step.
+
+- A test that the documented check-id table matches the checks that exist,
+  in both directions. The table is what a reader copies into
+  `SILENCED_SYSTEM_CHECKS`, and it was maintained entirely by hand.
+
 ### Fixed
 
 - **CI stopped being able to reach MariaDB.** Django 6.1 raised the MariaDB
