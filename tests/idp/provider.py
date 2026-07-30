@@ -32,6 +32,12 @@ class FakeIdP:
     keys: list[SigningKey] = field(default_factory=list)
     now: dt.datetime = DEFAULT_NOW
 
+    #: Overrides applied to the discovery document. A value of ``None`` removes
+    #: the key, which is how a provider that omits an optional field is
+    #: modelled. Real providers do this: Entra publishes no
+    #: ``code_challenge_methods_supported`` at all.
+    discovery_overrides: dict[str, Any] = field(default_factory=dict)
+
     def __post_init__(self) -> None:
         if not self.keys:
             self.keys = [generate_key()]
@@ -80,6 +86,15 @@ class FakeIdP:
         }
         if self.vendor == "entra":
             doc["subject_types_supported"] = ["pairwise"]
+            # Verified against the live document: Entra's v2.0 metadata has no
+            # code_challenge_methods_supported field, though it accepts S256.
+            doc.pop("code_challenge_methods_supported", None)
+
+        for key, value in self.discovery_overrides.items():
+            if value is None:
+                doc.pop(key, None)
+            else:
+                doc[key] = value
         if self.vendor == "google":
             # Verified against the live document: Google publishes no
             # end_session_endpoint, so RP-initiated logout is impossible.

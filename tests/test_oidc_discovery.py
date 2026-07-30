@@ -110,23 +110,42 @@ class TestEndpointSchemes:
 
 
 class TestPkceRequirement:
-    def test_s256_is_required_by_default(self, idp: FakeIdP) -> None:
+    """Silence and refusal are different facts about a provider.
+
+    RFC 8414 makes ``code_challenge_methods_supported`` optional, so an absent
+    field carries no information. A present field that omits S256 does: the
+    provider is stating what it accepts, and S256 is all this package sends.
+    """
+
+    def test_a_method_set_without_s256_is_refused(self, idp: FakeIdP) -> None:
         doc = document(idp, code_challenge_methods_supported=["plain"])
         with pytest.raises(DiscoveryError, match="S256"):
             validate_metadata(doc, expected_issuer=ISSUER)
 
-    def test_an_absent_field_is_also_a_refusal(self, idp: FakeIdP) -> None:
-        doc = document(idp)
-        doc.pop("code_challenge_methods_supported")
-        with pytest.raises(DiscoveryError, match="S256"):
-            validate_metadata(doc, expected_issuer=ISSUER)
+    def test_an_absent_field_is_not_a_refusal(self, idp: FakeIdP) -> None:
+        """This is the shape Microsoft actually publishes.
 
-    def test_the_requirement_can_be_waived_per_connection(self, idp: FakeIdP) -> None:
-        """Some providers support S256 without advertising it. The escape
-        hatch exists; the docs ask you to record why you used it."""
+        Entra's v2.0 document omits the field entirely and accepts S256 without
+        complaint. Reading that as a refusal failed every Entra deployment at
+        startup, and the advice it printed -- require_s256=False -- is the wrong
+        switch for a metadata gap: it also silences a provider that genuinely
+        refuses S256.
+        """
         doc = document(idp)
         doc.pop("code_challenge_methods_supported")
+        metadata = validate_metadata(doc, expected_issuer=ISSUER)
+        assert metadata.code_challenge_methods_supported == ()
+
+    def test_the_refusal_can_still_be_waived_per_connection(self, idp: FakeIdP) -> None:
+        """For a provider whose metadata understates what it accepts. The docs
+        ask you to record why you used it."""
+        doc = document(idp, code_challenge_methods_supported=["plain"])
         assert validate_metadata(doc, expected_issuer=ISSUER, require_s256=False)
+
+    def test_the_error_names_what_the_provider_offered(self, idp: FakeIdP) -> None:
+        doc = document(idp, code_challenge_methods_supported=["plain"])
+        with pytest.raises(DiscoveryError, match="plain"):
+            validate_metadata(doc, expected_issuer=ISSUER)
 
 
 class TestResponseTypes:

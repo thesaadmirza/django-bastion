@@ -61,6 +61,44 @@ class TestHealthyConnection:
         report = check_connection(build(idp, transport))
         assert statuses(report.results)["signing algorithms"] is Status.OK
 
+    def test_advertised_s256_passes(self, idp: FakeIdP, transport: FakeTransport) -> None:
+        report = check_connection(build(idp, transport))
+        assert statuses(report.results)["PKCE"] is Status.OK
+
+
+class TestPkceReporting:
+    """The doctor has to distinguish a provider that will not do S256 from one
+    that simply does not say."""
+
+    def test_an_absent_method_list_is_unverifiable_not_a_failure(
+        self, idp: FakeIdP, transport: FakeTransport
+    ) -> None:
+        """Microsoft's v2.0 document omits the field and accepts S256 anyway.
+
+        This used to fail discovery outright, so bastion_doctor refused every
+        Entra deployment on its first run and told the operator to turn off
+        require_s256 -- which is not what was wrong.
+        """
+        idp.discovery_overrides = {"code_challenge_methods_supported": None}
+        report = check_connection(build(idp, transport))
+
+        assert statuses(report.results)["PKCE"] is Status.UNVERIFIABLE
+        assert statuses(report.results)["discovery"] is Status.OK
+        assert not report.failed, "a silent provider must not fail the run"
+
+    def test_a_method_list_without_s256_fails(self, idp: FakeIdP, transport: FakeTransport) -> None:
+        idp.discovery_overrides = {"code_challenge_methods_supported": ["plain"]}
+        report = check_connection(build(idp, transport))
+        assert report.failed
+
+    def test_the_unverifiable_note_explains_why_it_is_not_a_problem(
+        self, idp: FakeIdP, transport: FakeTransport
+    ) -> None:
+        idp.discovery_overrides = {"code_challenge_methods_supported": None}
+        report = check_connection(build(idp, transport))
+        pkce = next(r for r in report.results if r.name == "PKCE")
+        assert "optional" in (pkce.hint or "").lower()
+
 
 class TestBrokenConnection:
     def test_unreachable_discovery_fails(self, idp: FakeIdP, transport: FakeTransport) -> None:

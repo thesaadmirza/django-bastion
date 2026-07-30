@@ -163,6 +163,7 @@ def _network_checks(connection: Connection) -> Iterator[Result]:
     yield Result("discovery", Status.OK, f"Fetched and validated for {metadata.issuer}.")
 
     yield from _algorithm_check(metadata)
+    yield from _pkce_check(metadata)
     yield from _key_check(connection)
     yield from _clock_check(connection, metadata)
 
@@ -179,6 +180,49 @@ def _network_checks(connection: Connection) -> Iterator[Result]:
                 "Google is the common case here."
             ),
         )
+
+
+def _pkce_check(metadata: Any) -> Iterator[Result]:
+    """Report what the provider says about PKCE, without pretending to know.
+
+    Discovery refuses a provider that advertises a method set without S256,
+    since that is a stated refusal and S256 is all this package sends. Silence
+    is not a refusal, though: RFC 8414 makes the field optional and Microsoft
+    omits it while supporting S256 perfectly well. Treating that as a failure
+    stopped every Entra deployment at startup and pushed people towards
+    require_s256=False, which is the wrong switch for a metadata gap.
+    """
+    advertised = set(metadata.code_challenge_methods_supported)
+
+    if "S256" in advertised:
+        yield Result("PKCE", Status.OK, "Provider advertises S256.")
+        return
+
+    if not advertised:
+        yield Result(
+            "PKCE",
+            Status.UNVERIFIABLE,
+            "Provider advertises no code_challenge_methods_supported.",
+            hint=(
+                "The field is optional under RFC 8414 and its absence says "
+                "nothing; Microsoft omits it and accepts S256. This package "
+                "sends S256 and never `plain`, so a provider that genuinely "
+                "does not support it will reject the authorization request. "
+                "One sign-in settles it."
+            ),
+        )
+        return
+
+    yield Result(
+        "PKCE",
+        Status.FAIL,
+        f"Provider advertises only {', '.join(sorted(advertised))}.",
+        hint=(
+            "S256 is the only method this package sends, so authorization "
+            "would be refused. If the metadata understates what the provider "
+            "accepts, set require_s256=False on the connection and record why."
+        ),
+    )
 
 
 def _algorithm_check(metadata: Any) -> Iterator[Result]:

@@ -103,14 +103,24 @@ def validate_metadata(
     if response_types and "code" not in response_types:
         raise DiscoveryError("provider does not support the authorization code flow")
 
+    # RFC 8414 makes code_challenge_methods_supported OPTIONAL, so an absent
+    # field says nothing about what the provider accepts. Microsoft's v2.0
+    # document omits it entirely while supporting S256 perfectly well, and
+    # treating that as a refusal failed every Entra deployment at startup.
+    #
+    # A field that is present and does not list S256 is different: there the
+    # provider is telling us it will not do S256, and we send nothing else.
+    # That is worth refusing, and require_s256=False is the escape hatch for a
+    # provider whose metadata understates it.
     challenge_methods = _strings(document.get("code_challenge_methods_supported"))
-    if require_s256 and "S256" not in challenge_methods:
+    if require_s256 and challenge_methods and "S256" not in challenge_methods:
         raise DiscoveryError(
-            "provider does not advertise S256 in code_challenge_methods_supported. "
-            "PKCE is what prevents authorization code injection, and `plain` is "
-            "not an acceptable substitute. If the provider supports S256 without "
-            "advertising it, set require_s256=False on the connection and record "
-            "why."
+            "provider advertises code_challenge_methods_supported without S256, "
+            f"offering only {sorted(challenge_methods)}. PKCE is what prevents "
+            "authorization code injection and `plain` is not a substitute. This "
+            "package sends S256 and nothing else, so authorization would fail at "
+            "the provider. If its metadata understates what it accepts, set "
+            "require_s256=False on the connection and record why."
         )
 
     signing_algs = _strings(document.get("id_token_signing_alg_values_supported"))
