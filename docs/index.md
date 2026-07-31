@@ -36,6 +36,8 @@ Task-oriented. Assume you know what you are doing.
 - Okta — not written yet
 - Google Workspace — not written yet
 - Keycloak — not written yet
+- [Customising the pages](how-to/customising-pages.md) — how the base template is
+  chosen, how to override a page, and which content is load-bearing
 
 ## Reference
 
