@@ -1,39 +1,51 @@
-{% load i18n %}<!--
+{% extends base_template|default:"bastion/base.html" %}
+{% load i18n %}
+
+{% comment %}
   Deliberately plain. No branding to imitate, no reset link, no account
   discovery, and one error message for every cause.
 
   The banner is not decoration. Someone reaching this page during an incident
   should know before they type that using it will page people.
--->
-<!doctype html>
-<html lang="{{ LANGUAGE_CODE|default:'en' }}">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% if error %}{% translate "Error: " %}{% endif %}{% translate "Emergency access" %}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0;
-           padding: 2rem 1rem; color: #1b1b1b; background: #fff; }
-    main { max-width: 30rem; margin: 0 auto; }
-    h1 { font-size: 1.5rem; margin-top: 0; }
-    .notice { border: 3px solid #d4351c; padding: 1rem; margin-bottom: 1.5rem; }
-    label { display: block; font-weight: 600; margin-top: 1rem; }
-    input { font: inherit; width: 100%; padding: 0.5rem; margin-top: 0.25rem;
-            min-height: 44px; box-sizing: border-box; }
-    button { font: inherit; margin-top: 1.5rem; padding: 0.6rem 1.2rem;
-             min-height: 44px; cursor: pointer; }
-    .error { border-left: 5px solid #d4351c; padding-left: 1rem; }
-    .reference { font-family: ui-monospace, monospace; }
-    @media (prefers-color-scheme: dark) {
-      body { color: #f3f2f1; background: #101010; }
-    }
-  </style>
-</head>
-<body>
-  <main>
+
+  The inline extrastyle block is the part not to remove. Under the admin base the
+  layout comes from admin/css/base.css, and this is the one page in the package
+  that is reached *during* an incident, when a collectstatic that never ran or a
+  CDN that is also down is a real possibility. These few rules are what keep the
+  warning legible and the fields usable when the stylesheet does not arrive, so
+  the page degrades to plain rather than to a wall of unstyled text with the
+  warning indistinguishable from the rest. They are scoped tightly enough not to
+  fight the admin CSS when it does load.
+{% endcomment %}
+
+{% block title %}{% if error %}{% translate "Error: " %}{% endif %}{% translate "Emergency access" %}{% if site_title %} | {{ site_title }}{% endif %}{% endblock %}
+
+{% block extrastyle %}{{ block.super }}<style>
+  #bastion-break-glass { max-width: 30rem; }
+  #bastion-break-glass .errornote { border: 3px solid #d4351c;
+    padding: 0.75rem 1rem; margin: 1rem 0; font-weight: 600; }
+  #bastion-break-glass label { display: block; font-weight: 600;
+    margin-top: 1rem; }
+  #bastion-break-glass input[type="text"],
+  #bastion-break-glass input[type="password"] { font: inherit; width: 100%;
+    padding: 0.5rem; margin-top: 0.25rem; min-height: 44px;
+    box-sizing: border-box; }
+  #bastion-break-glass input[type="submit"] { font: inherit; margin-top: 1.5rem;
+    padding: 0.6rem 1.2rem; min-height: 44px; cursor: pointer; }
+</style>{% endblock %}
+
+{% block content_title %}{% endblock %}
+{% block breadcrumbs %}{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block usertools %}{% endblock %}
+{% block nav-global %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+  <div id="bastion-break-glass">
     <h1 tabindex="-1">{% translate "Emergency access" %}</h1>
 
-    <div class="notice">
+    <div class="errornote">
       <p>
         {% blocktranslate trimmed %}
           This route bypasses single sign-on. Every attempt, successful or not,
@@ -48,12 +60,13 @@
     </div>
 
     {% if error %}
-      <p class="error" role="alert">
+      <p class="errornote" role="alert">
         {{ error }}
-        {% translate "Reference:" %} <span class="reference">{{ reference }}</span>
+        {% translate "Reference:" %} <code>{{ reference }}</code>
       </p>
     {% endif %}
 
+    {% comment %} No action attribute: it posts back to itself. {% endcomment %}
     <form method="post">
       {% csrf_token %}
       <label for="id_username">{% translate "Username" %}</label>
@@ -65,8 +78,7 @@
       <input id="id_password" name="password" type="password"
              autocomplete="current-password" required>
 
-      <button type="submit">{% translate "Sign in" %}</button>
+      <input type="submit" value="{% translate 'Sign in' %}">
     </form>
-  </main>
-</body>
-</html>
+  </div>
+{% endblock %}

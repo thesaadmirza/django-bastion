@@ -24,6 +24,7 @@ from django.views.decorators.http import require_http_methods
 from bastion.breakglass.service import BreakGlassDenied, authenticate_break_glass
 from bastion.conf import get_setting
 from bastion.flows import correlation_id
+from bastion.pages import base_template
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,14 @@ def break_glass_login(request: HttpRequest) -> HttpResponse:
     if not config.get("ENABLED"):
         # Indistinguishable from a route that does not exist, because a
         # disabled emergency endpoint should not advertise itself.
-        return render(request, "bastion/login_failed.html", {"reference": reference}, status=404)
+        return render(
+            request,
+            "bastion/login_failed.html",
+            {"reference": reference, "base_template": base_template()},
+            status=404,
+        )
 
-    context = {"reference": reference, "error": None}
+    context = {"reference": reference, "error": None, "base_template": base_template()}
 
     if request.method == "POST":
         try:

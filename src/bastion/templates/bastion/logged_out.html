@@ -1,67 +1,54 @@
-{% load i18n %}<!--
+{% extends base_template|default:"bastion/base.html" %}
+{% load i18n %}
+
+{% comment %}
   Shown when the local session ended but the provider's did not, which happens
-  for a provider that publishes no end_session_endpoint (Google) and when
-  discovery could not be reached.
+  for a provider that publishes no end_session_endpoint (Google), when discovery
+  could not be reached, and for a session that predates the connection being
+  recorded.
 
   It says so explicitly rather than saying "signed out". Someone on a shared
   machine who believes they have signed out, and has not, is the whole reason
-  this page exists instead of a redirect to the home page.
+  this page exists instead of a redirect to the home page. The auth.logout audit
+  record carries the same fact as context.rp_initiated.
 
   Same accessibility notes as login_failed.html: front-loaded <title>, a real
   <h1>, selectable reference, no autofocus.
--->
-<!doctype html>
-<html lang="{{ LANGUAGE_CODE|default:'en' }}">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% translate "Signed out" %}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0;
-           padding: 2rem 1rem; color: #1b1b1b; background: #fff; }
-    main { max-width: 40rem; margin: 0 auto; }
-    h1 { font-size: 1.75rem; margin-top: 0; }
-    .warning { border: 2px solid #d4351c; padding: 0.75rem 1rem;
-               margin: 1.5rem 0; }
-    .reference { font-family: ui-monospace, monospace; font-size: 1.1rem;
-                 background: #f3f2f1; padding: 0.25rem 0.5rem;
-                 border: 1px solid #b1b4b6; display: inline-block; }
-    a { color: #1d70b8; }
-    @media (prefers-color-scheme: dark) {
-      body { color: #f3f2f1; background: #101010; }
-      .reference { background: #2b2b2b; border-color: #6f777b; }
-      a { color: #85b7e8; }
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <h1 tabindex="-1">{% translate "You are signed out of this site" %}</h1>
+{% endcomment %}
 
-    {% if not provider_session_ended %}
-      <div class="warning">
-        <p>
-          {% blocktranslate trimmed %}
-            You are still signed in with your identity provider, so returning
-            to this site may sign you straight back in without asking for a
-            password.
-          {% endblocktranslate %}
-        </p>
-        <p>
-          {% blocktranslate trimmed %}
-            On a shared or public computer, close every browser window to
-            finish signing out.
-          {% endblocktranslate %}
-        </p>
-      </div>
-    {% endif %}
+{% block title %}{% translate "Signed out" %}{% if site_title %} | {{ site_title }}{% endif %}{% endblock %}
 
-    <p>
-      {% translate "Reference:" %}
-      <span class="reference">{{ reference }}</span>
-    </p>
+{% block content_title %}<h1 tabindex="-1">{% translate "You are signed out of this site" %}</h1>{% endblock %}
 
-    <p><a href="/">{% translate "Return to the home page" %}</a></p>
-  </main>
-</body>
-</html>
+{% block breadcrumbs %}{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block usertools %}{% endblock %}
+{% block nav-global %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+  {% if not provider_session_ended %}
+    <div class="errornote">
+      <p>
+        {% blocktranslate trimmed %}
+          You are still signed in with your identity provider, so returning
+          to this site may sign you straight back in without asking for a
+          password.
+        {% endblocktranslate %}
+      </p>
+      <p>
+        {% blocktranslate trimmed %}
+          On a shared or public computer, close every browser window to
+          finish signing out.
+        {% endblocktranslate %}
+      </p>
+    </div>
+  {% endif %}
+
+  <p>
+    {% translate "Reference:" %}
+    <code>{{ reference }}</code>
+  </p>
+
+  <p><a href="/">{% translate "Return to the home page" %}</a></p>
+{% endblock %}

@@ -1,7 +1,14 @@
-{% load i18n %}<!--
-  One page for every pre-authentication failure. The cause is in the log
-  against the reference, not here: varying the page by cause tells whoever is
-  probing which of their guesses was closer.
+{% extends base_template|default:"bastion/base.html" %}
+{% load i18n %}
+
+{% comment %}
+  One page for every pre-authentication failure. The cause is in the log against
+  the reference, not here: varying the page by cause tells whoever is probing
+  which of their guesses was closer.
+
+  It is also what the break-glass route returns as a 404 when break-glass is
+  disabled, so it has to read as an ordinary failure page and must not hint that
+  anything exists behind it.
 
   Accessibility notes, since this page is easy to get wrong:
   - the title is front-loaded with "Error", because on a full page load the
@@ -10,47 +17,31 @@
   - the reference is selectable text, because someone using a screen reader
     cannot read a code out of a screenshot
   - no autofocus anywhere; focus belongs on the heading
--->
-<!doctype html>
-<html lang="{{ LANGUAGE_CODE|default:'en' }}">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% translate "Error: Sign-in failed" %}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0;
-           padding: 2rem 1rem; color: #1b1b1b; background: #fff; }
-    main { max-width: 40rem; margin: 0 auto; }
-    h1 { font-size: 1.75rem; margin-top: 0; }
-    .reference { font-family: ui-monospace, monospace; font-size: 1.1rem;
-                 background: #f3f2f1; padding: 0.25rem 0.5rem;
-                 border: 1px solid #b1b4b6; display: inline-block; }
-    a { color: #1d70b8; }
-    @media (prefers-color-scheme: dark) {
-      body { color: #f3f2f1; background: #101010; }
-      .reference { background: #2b2b2b; border-color: #6f777b; }
-      a { color: #85b7e8; }
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <h1 tabindex="-1">{% translate "We could not sign you in" %}</h1>
+{% endcomment %}
 
-    <p>
-      {% blocktranslate trimmed %}
-        Something went wrong while completing your sign-in. This is usually
-        temporary. Try again, and if it keeps happening, contact your IT
-        service desk.
-      {% endblocktranslate %}
-    </p>
+{% block title %}{% translate "Error: Sign-in failed" %}{% if site_title %} | {{ site_title }}{% endif %}{% endblock %}
 
-    <p>
-      {% translate "Give them this reference:" %}
-      <span class="reference">{{ reference }}</span>
-    </p>
+{% block content_title %}<h1 tabindex="-1">{% translate "We could not sign you in" %}</h1>{% endblock %}
 
-    <p><a href="/">{% translate "Return to the home page" %}</a></p>
-  </main>
-</body>
-</html>
+{% block breadcrumbs %}{% endblock %}
+{% block nav-breadcrumbs %}{% endblock %}
+{% block usertools %}{% endblock %}
+{% block nav-global %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+
+{% block content %}
+  <p>
+    {% blocktranslate trimmed %}
+      Something went wrong while completing your sign-in. This is usually
+      temporary. Try again, and if it keeps happening, contact your IT
+      service desk.
+    {% endblocktranslate %}
+  </p>
+
+  <p>
+    {% translate "Give them this reference:" %}
+    <code>{{ reference }}</code>
+  </p>
+
+  <p><a href="/">{% translate "Return to the home page" %}</a></p>
+{% endblock %}
