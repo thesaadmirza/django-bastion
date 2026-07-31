@@ -37,6 +37,7 @@ from django.views.decorators.cache import never_cache
 
 from bastion.conf import get_setting
 from bastion.flows import correlation_id
+from bastion.pages import ADMIN_BASE
 from bastion.redirects import safe_redirect_url
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,9 @@ class SSOAdminSiteMixin:
             request,
             "bastion/access_denied.html",
             {
+                # Always the admin base here: this method is only reachable
+                # through AdminSite, so the app is installed and routed.
+                "base_template": ADMIN_BASE,
                 "reference": reference,
                 "identity": getattr(request.user, "email", "") or request.user.get_username(),
                 "required_groups": self._required_groups(),
