@@ -10,7 +10,56 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a2.
+Nothing since 0.0.1a3.
+
+## [0.0.1a3] - 2026-07-31
+
+Signing out now signs you out of the identity provider as well, which it did
+not before. If you rely on the old behaviour, you were relying on people
+staying signed in. The rendered pages also follow the admin's design where the
+admin is available.
+
+### Added
+
+- **RP-initiated logout.** `POST /sso/logout/`, and the admin's own Log out
+  button, end the local session and then send the browser to the provider's
+  `end_session_endpoint`. The local session is destroyed first and
+  unconditionally, so an unreachable provider still leaves the person signed
+  out here. Where the provider publishes no `end_session_endpoint`, which is
+  Google, a page says the provider session is still live rather than
+  redirecting somewhere that implies otherwise.
+- Two connection keys, both off by default: `store_id_token`, which keeps the
+  compact ID token in the session so logout can send `id_token_hint` and the
+  provider does not ask the person to confirm; and `post_logout_redirect_uri`,
+  which **must be registered at the provider**, because an unregistered value
+  makes Keycloak refuse the logout outright rather than fall back.
+- `auth.logout` is now emitted, carrying `context.rp_initiated` so a later
+  investigation can tell a full sign-out from a local one.
+- The four rendered pages extend `admin/base_site.html` wherever
+  `django.contrib.admin` is installed and routed, and a packaged
+  `bastion/base.html` otherwise. See
+  [customising the pages](docs/how-to/customising-pages.md).
+
+### Fixed
+
+- **Logout left the provider session intact.** The Django session was cleared
+  and nothing else, so the next request to a protected URL was answered with a
+  fresh authorization code and no prompt. `bastion_doctor` reported
+  `Provider supports RP-initiated logout` while nothing in the package ever
+  called the endpoint.
+- **The sign-out control on the access-denied page could not end the session.**
+  It pointed at `admin:logout`, which Django wraps in `admin_view`; that wrapper
+  checks `has_permission` first and redirects the logout path to the admin index
+  without calling the view. Since the page is only rendered when
+  `has_permission` is false, the button was a no-op for everyone who was ever
+  shown it, on the page that tells them to sign out and try another account.
+  Found while security-reviewing the logout work.
+
+### Removed
+
+- The unused `state` parameter on `build_end_session_url`. It is only useful
+  for correlating the post-logout redirect, which needs a handler this package
+  does not have. It comes back with the handler.
 
 ## [0.0.1a2] - 2026-07-30
 
@@ -118,7 +167,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a2...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a3...HEAD
+[0.0.1a3]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a2...v0.0.1a3
 [0.0.1a2]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a1...v0.0.1a2
 [0.0.1a1]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a0...v0.0.1a1
 [0.0.1a0]: https://github.com/thesaadmirza/django-bastion/releases/tag/v0.0.1a0
