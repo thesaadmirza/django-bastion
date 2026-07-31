@@ -57,6 +57,23 @@ class Connection:
     # to say something useful.
     require_group_match: bool = False
 
+    # Logout. Clearing the local session is not signing out: the provider's own
+    # session cookie survives it, and the next click on a protected URL is
+    # answered with a fresh code and no prompt. Both of these feed the
+    # RP-initiated logout request.
+    #
+    # Off by default because it keeps a bearer-ish credential in the session
+    # store, which is a decision a deployment should make rather than inherit.
+    # With it off, logout still reaches the provider, and the provider asks the
+    # person to confirm.
+    store_id_token: bool = False
+
+    #: Where the provider sends the browser after logout. **Must be registered
+    #: at the provider**, which is why there is no default derived from the
+    #: request: an unregistered value makes the provider refuse the logout
+    #: outright rather than fall back.
+    post_logout_redirect_uri: str | None = None
+
     validation: ValidationPolicy = field(default_factory=ValidationPolicy)
     transport: Transport = field(default_factory=UrllibTransport)
     transactions: TransactionStore = field(default_factory=CacheTransactionStore)
