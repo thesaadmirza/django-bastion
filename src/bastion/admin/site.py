@@ -81,6 +81,35 @@ class SSOAdminSiteMixin:
 
         return HttpResponseRedirect(self._sso_url(request))
 
+    # ----------------------------------------------------------------- logout --
+
+    @method_decorator(never_cache)
+    @login_not_required
+    def logout(
+        self, request: HttpRequest, extra_context: dict[str, Any] | None = None
+    ) -> HttpResponse:
+        """Send the admin's own Log out button through the provider.
+
+        Without this the button is Django's, which clears the local session and
+        stops. The provider's session cookie survives, so the next click on the
+        admin is answered with a fresh authorization code and no prompt, and the
+        person who pressed Log out on a shared machine is still signed in. That
+        is the single most surprising thing about putting an admin behind SSO,
+        and the button is where it has to be fixed: telling people to visit a
+        different URL to really sign out is not a fix.
+
+        Non-POST is handed to Django's implementation rather than answered here,
+        so its 405 and its behaviour when logout is not permitted stay exactly
+        as Django defines them.
+        """
+        if request.method != "POST" or not self._sso_enabled():
+            stock: HttpResponse = super().logout(request, extra_context)  # type: ignore[misc]
+            return stock
+
+        from bastion.views import logout as sso_logout
+
+        return sso_logout(request)
+
     # ------------------------------------------------------------------- urls --
 
     def _success_url(self, request: HttpRequest) -> str:
@@ -175,7 +204,13 @@ class SSOAdminSiteMixin:
         return connection.staff_groups + connection.superuser_groups
 
 
-class SSOAdminSite(SSOAdminSiteMixin, AdminSite):
+# The ignore is on ``logout`` only. django-stubs types AdminSite.logout as
+# returning TemplateResponse, which is narrower than Django's own contract:
+# the body is LogoutView.as_view()(request), and for a POST carrying next_page
+# that is an HttpResponseRedirect. Our override returns a redirect or a rendered
+# page, both HttpResponse, so the conflict is with the stub rather than with
+# Django. Same narrowing as SSOBackend.get_user, documented there too.
+class SSOAdminSite(SSOAdminSiteMixin, AdminSite):  # type: ignore[misc]
     """Drop-in replacement for ``django.contrib.admin.site``.
 
     Installed through ``AdminConfig.default_site`` rather than by instantiating
