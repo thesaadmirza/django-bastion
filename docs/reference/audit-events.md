@@ -9,10 +9,10 @@ selection supports after-the-fact investigation. Without it, customers write it
 by hand from source, badly.
 
 Those first two are different questions, and this page used to answer only the
-first while claiming to answer both. **Fourteen of the thirty names below are
+first while claiming to answer both. **Thirteen of the thirty names below are
 reserved and no code path emits them yet**, and each is marked. It matters
-because an auditor reading an unmarked `auth.logout` row would go looking for
-logout records, and there are none. The rest of the vocabulary is here because
+because an auditor reading an unmarked `auth.mfa.satisfied` row would go looking
+for MFA records, and there are none. The rest of the vocabulary is here because
 renaming an event later breaks every SIEM rule written against it, so the names
 are fixed before the emitters land.
 
@@ -31,7 +31,7 @@ rules or compliance evidence reference it.
 | `auth.login.succeeded` | A session is established | The baseline population for an access review |
 | `auth.login.failed` | Authentication did not complete | Emitted on the failure path too — a failed login is the event most worth having |
 | `auth.login.denied` | Authenticated, then refused | **Kept distinct from failure.** An authorisation denial and an authentication failure are different detections under SOC 2 CC7.2; collapsing them loses the signal that someone's credentials work but their access does not |
-| `auth.logout` | **Reserved, not emitted yet.** Session ended deliberately | |
+| `auth.logout` | A session was ended deliberately | `context.rp_initiated` says whether the provider's own session was ended too. False means only the local session went, so the person can be signed straight back in without a prompt, and an investigation into "they said they logged out" needs to know which happened |
 | `auth.session.revoked` | **Reserved, not emitted yet.** Session ended by an administrator or the provider | |
 | `auth.assertion.rejected` | Signature, issuer, audience, nonce, replay or clock validation failed | High signal. This is what a token forgery attempt looks like |
 | `auth.protocol.fallback` | Break-glass was used or attempted | Rare by design, critical severity, always alerts |
