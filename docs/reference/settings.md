@@ -51,6 +51,24 @@ One entry per provider. Keys map to `Connection` fields.
 | `require_mfa` | `False` | Refuses logins whose assertion shows no second factor. Verify with one sign-in first; `amr` is opt-in on several providers |
 | `require_group_match` | `False` | Refuse sign-in entirely with no matching group, rather than authenticating without privileges |
 | `require_s256` | `True` | Refuses a provider that advertises a PKCE method set **without** S256. A provider that advertises nothing is not refused: the field is optional under RFC 8414 and Entra omits it. Lower this only for a provider whose metadata understates it, and record why |
+| `store_id_token` | `False` | Keeps the compact ID token in the session so logout can send `id_token_hint`. Without it the provider may ask the person to confirm the sign-out, which Keycloak does. The cost is a credential in the session store, which is why it is opt-in |
+| `post_logout_redirect_uri` | `None` | Where the provider sends the browser after logout. **Must be registered at the provider.** Nothing is sent when unset, deliberately: an unregistered value makes the provider refuse the logout outright rather than fall back, so the provider's own confirmation page is the safer default |
+
+### Logout
+
+`POST /sso/logout/`, and the admin's own Log out button, end the local session
+and then send the browser to the provider's `end_session_endpoint`.
+
+The order is the property: the local session is destroyed first and
+unconditionally, so a provider that is unreachable still leaves the person
+signed out here. When the provider publishes no `end_session_endpoint` at all,
+which is Google, a page says the provider session is still live rather than
+redirecting somewhere that implies it is not. The `auth.logout` audit record
+carries `context.rp_initiated` to tell the two apart afterwards.
+
+`GET` is refused with a 405. A `GET` that signs people out is reachable from any
+third-party page, and on this route it would also bounce the browser at the
+provider.
 
 The staff/superuser asymmetry is deliberate: a provider hiccup should not lock
 every administrator out of the admin, but a revoked superuser must lose it at

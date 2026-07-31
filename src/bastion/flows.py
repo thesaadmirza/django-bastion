@@ -26,6 +26,7 @@ from bastion.protocols.oidc.quirks import to_identity_claims
 from bastion.protocols.oidc.transaction import (
     Transaction,
     build_authorization_url,
+    build_end_session_url,
     start_transaction,
     verify_callback_issuer,
 )
@@ -43,6 +44,15 @@ class ProviderReturnedError(BastionError):
 class LoginResult:
     identity: IdentityClaims
     transaction: Transaction
+
+    #: The compact ID token, kept only so a connection with ``store_id_token``
+    #: can put it in the session for ``id_token_hint`` at logout. Treated the
+    #: same as ``TokenResponse``: never logged, never rendered, never in an
+    #: exception.
+    id_token: str = ""
+
+    def __repr__(self) -> str:
+        return f"<LoginResult subject={self.identity.subject!r} id_token=[redacted]>"
 
 
 def callback_uri(request: HttpRequest) -> str:
@@ -148,7 +158,51 @@ def complete_login(request: HttpRequest, connection: Connection) -> LoginResult:
     if connection.require_mfa and not identity.mfa_satisfied:
         raise TokenError("connection requires MFA and the assertion did not carry it")
 
-    return LoginResult(identity=identity, transaction=transaction)
+    return LoginResult(
+        identity=identity,
+        transaction=transaction,
+        # Carried only when the connection asked for it. A token nobody
+        # configured a use for should not survive this function.
+        id_token=tokens.id_token if connection.store_id_token else "",
+    )
+
+
+def begin_logout(
+    request: HttpRequest,
+    connection: Connection,
+    *,
+    id_token: str | None = None,
+) -> str | None:
+    """Return the provider URL that ends the provider's own session.
+
+    ``None`` means the provider publishes no ``end_session_endpoint``, in which
+    case clearing the local session is the whole of what is possible and the
+    caller should say so rather than pretend. Google is the provider this
+    happens with.
+
+    Reached only after the local session has been dealt with, so a provider
+    that is down cannot leave someone signed in locally.
+    """
+    try:
+        metadata = connection.metadata()
+    except BastionError:
+        # A discovery failure must not block the local sign-out that already
+        # happened. Logging out of the provider is the part that fails.
+        logger.warning(
+            "Could not reach %s for its end_session_endpoint; local sign-out only.",
+            connection.identifier,
+        )
+        return None
+
+    if not metadata.supports_rp_initiated_logout:
+        return None
+
+    return build_end_session_url(
+        str(metadata.end_session_endpoint),
+        client_id=connection.client_id,
+        id_token_hint=id_token or None,
+        post_logout_redirect_uri=connection.post_logout_redirect_uri,
+    )
 
 
 def correlation_id() -> str:
