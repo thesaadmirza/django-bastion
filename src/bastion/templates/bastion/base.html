@@ -1,0 +1,58 @@
+{% load i18n %}{% comment %}
+  The fallback base, used when django.contrib.admin is not available to extend.
+
+  Every page in this directory extends `base_template`, which the views resolve
+  to "admin/base_site.html" when the admin is installed and routed, and to this
+  file otherwise. That is what lets one copy of each page serve both cases:
+  duplicating the pages per base would drift, and the prose in them is
+  translated, so drift would mean two message catalogues saying different things.
+
+  The block names deliberately match the admin's: `title`, `extrastyle`,
+  `bodyclass`, `content_title`, `content`. Django silently ignores a child block
+  with no matching parent block, so a page may also override admin-only blocks
+  like `usertools` and they become no-ops here.
+
+  Styling is inline and stays inline. These pages are reached during failures,
+  and break_glass.html is reached during an incident. A page that needs a
+  separate stylesheet to be readable is a page that can arrive unreadable.
+{% endcomment %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE|default:'en' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% translate "Sign-in" %}{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0;
+           padding: 2rem 1rem; color: #1b1b1b; background: #fff; }
+    main { max-width: 42rem; margin: 0 auto; }
+    h1 { font-size: 1.75rem; margin-top: 0; }
+    dl { margin: 1.5rem 0; }
+    dt { font-weight: 600; margin-top: 0.75rem; }
+    dd { margin: 0.25rem 0 0; }
+    code { font-family: ui-monospace, monospace; background: #f3f2f1;
+           padding: 0.15rem 0.4rem; border: 1px solid #b1b4b6; }
+    .errornote { border: 3px solid #d4351c; padding: 0.75rem 1rem;
+                 margin: 1.5rem 0; font-weight: 600; }
+    .help { font-size: 0.9rem; }
+    label { display: block; font-weight: 600; margin-top: 1rem; }
+    input[type="text"], input[type="password"] {
+      font: inherit; width: 100%; padding: 0.5rem; margin-top: 0.25rem;
+      min-height: 44px; box-sizing: border-box; }
+    button, input[type="submit"] { font: inherit; margin-top: 1.5rem;
+      padding: 0.6rem 1.2rem; min-height: 44px; cursor: pointer; }
+    a { color: #1d70b8; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #f3f2f1; background: #101010; }
+      code { background: #2b2b2b; border-color: #6f777b; }
+      a { color: #85b7e8; }
+    }
+  </style>
+  {% block extrastyle %}{% endblock %}
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+  <main>
+    {% block content_title %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

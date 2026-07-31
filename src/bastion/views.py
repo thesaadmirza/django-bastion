@@ -33,6 +33,7 @@ from bastion.flows import (
     complete_login,
     correlation_id,
 )
+from bastion.pages import base_template
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ def _failure(request: HttpRequest, reference: str, *, status: int = 400) -> Http
     response = render(
         request,
         "bastion/login_failed.html",
-        {"reference": reference},
+        {"reference": reference, "base_template": base_template()},
         status=status,
     )
     response["Referrer-Policy"] = "no-referrer"
@@ -298,7 +299,11 @@ def logout(request: HttpRequest) -> HttpResponse:
         response = render(
             request,
             "bastion/logged_out.html",
-            {"reference": reference, "provider_session_ended": False},
+            {
+                "reference": reference,
+                "provider_session_ended": False,
+                "base_template": base_template(),
+            },
             status=200,
         )
     response["Referrer-Policy"] = "no-referrer"
@@ -317,6 +322,7 @@ def _denied(
         request,
         "bastion/access_denied.html",
         {
+            "base_template": base_template(),
             "reference": reference,
             "identity": getattr(user, "email", None) or str(user),
             "connection": connection.identifier,
