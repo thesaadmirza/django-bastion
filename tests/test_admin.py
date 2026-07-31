@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.contrib import admin
-from django.contrib.auth import get_user_model
+from django.contrib.auth import SESSION_KEY, get_user_model
 from django.test import Client
 from django.urls import reverse
 
@@ -196,7 +196,35 @@ class TestAuthenticatedWithoutStaff:
         client.force_login(plain_user, backend="bastion.backends.SSOBackend")
         response, _ = follow(client, "/admin/")
         assert b'method="post"' in response.content
-        assert b"/admin/logout/" in response.content
+        assert b"/sso/logout/" in response.content
+
+    def test_the_sign_out_control_actually_ends_the_session(
+        self, client: Client, plain_user
+    ) -> None:
+        """The control has to work for the population that sees the page.
+
+        It pointed at ``admin:logout``, which Django wraps in ``admin_view``.
+        That wrapper checks ``has_permission`` first and has a special case for
+        the logout path: redirect to the admin index *without calling the view*.
+        Since this page is only rendered when ``has_permission`` is false, the
+        button was a no-op for every single person who was ever shown it. It
+        answered 302 and left the session, and any stored ID token, in place --
+        on the page that tells them to sign out and try another account.
+
+        Asserting on the session rather than on the URL, because the previous
+        test asserted on the URL and passed throughout.
+        """
+        client.force_login(plain_user, backend="bastion.backends.SSOBackend")
+        session = client.session
+        session["_bastion_id_token"] = "header.payload.signature"
+        session.save()
+
+        response, _ = follow(client, "/admin/")
+        action = response.content.decode().split('action="')[1].split('"')[0]
+        client.post(action)
+
+        assert SESSION_KEY not in client.session, "the sign-out control did nothing"
+        assert "_bastion_id_token" not in client.session
 
     def test_a_deactivated_staff_user_is_handed_back_to_the_provider(
         self, client: Client, staff_user

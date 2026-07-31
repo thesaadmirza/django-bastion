@@ -151,9 +151,23 @@ class SSOAdminSiteMixin:
         reference = correlation_id()
         logger.info("Admin access denied for %s [ref %s]", request.user.get_username(), reference)
 
+        # Not ``admin:logout``. Django wraps that route in ``admin_view``, whose
+        # first act is a ``has_permission`` check, and there is a special case
+        # for the logout path that redirects to the admin index *without calling
+        # the view*. So the one population that ever sees this page is the one
+        # population that route refuses: the button posted, answered 302, and
+        # left the session and the stored ID token exactly where they were.
+        #
+        # The page tells the person to sign out and try another account, so the
+        # control has to work for them. ``bastion:logout`` is login_not_required
+        # and reachable by any authenticated user.
         try:
-            logout_url = reverse("admin:logout", current_app=self.name)  # type: ignore[attr-defined]
-        except NoReverseMatch:  # pragma: no cover - admin urls are always present
+            logout_url = reverse("bastion:logout")
+        except NoReverseMatch:
+            # bastion.urls is not included. The admin integration cannot work at
+            # all in that state -- _sso_url reverses bastion:begin -- but the
+            # denial page is reachable before anyone clicks anything, so it
+            # renders without the control rather than raising from a 403.
             logout_url = None
 
         response = render(
