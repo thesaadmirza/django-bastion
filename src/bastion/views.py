@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from django.contrib.auth import login as auth_login
+from django.contrib.auth import logout as auth_logout
 from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.models import AbstractBaseUser
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
@@ -25,11 +26,30 @@ from bastion.audit.events import Event, Outcome, Severity
 from bastion.conf import get_setting
 from bastion.connections import Connection, get_connection
 from bastion.exceptions import BastionError, ConfigurationError, TokenError
-from bastion.flows import begin_login, complete_login, correlation_id
+from bastion.flows import (
+    LoginResult,
+    begin_login,
+    begin_logout,
+    complete_login,
+    correlation_id,
+)
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SUCCESS_URL = "/"
+
+#: Which connection signed this session in. Written on every SSO login, because
+#: logout has to reach the same provider and the URL cannot be trusted to say
+#: which one that was.
+SESSION_CONNECTION_KEY = "_bastion_connection"
+
+#: The compact ID token, present only for connections with ``store_id_token``.
+#: Underscore-prefixed to match Django's own convention for session keys that
+#: are not application data.
+# The suppression below is for bandit, which flags any name ending in
+# _TOKEN_KEY as a hardcoded credential. This is the session dictionary key, not
+# the token.
+SESSION_ID_TOKEN_KEY = "_bastion_id_token"  # noqa: S105
 
 
 def _resolve_connection(request: HttpRequest, name: str | None) -> Connection:
@@ -189,7 +209,7 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
         )
         return _denied(request, user, resolved, reference)
 
-    _establish_session(request, user)
+    _establish_session(request, user, resolved, result)
 
     emit(
         Event.LOGIN_SUCCEEDED,
@@ -208,6 +228,79 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
 
     destination = result.transaction.redirect_to or DEFAULT_SUCCESS_URL
     response = HttpResponseRedirect(destination)
+    response["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@never_cache
+@login_not_required
+@require_http_methods(["POST"])
+def logout(request: HttpRequest) -> HttpResponse:
+    """End the local session, then end the provider's.
+
+    **POST only, and that is not negotiable.** Django made its own logout
+    POST-only in 4.1 for a reason that applies here twice over: a ``GET`` that
+    signs people out is triggerable from any image tag on any page, and on this
+    route it would also bounce the browser at the provider's logout endpoint.
+
+    The order is the property worth reading. The local session is destroyed
+    first and unconditionally, so a provider that is unreachable, or one with
+    no ``end_session_endpoint`` at all, still leaves the person signed out
+    here. Reversing it would make the local sign-out depend on the availability
+    of the very thing you may be signing out because of.
+    """
+    reference = correlation_id()
+    user = request.user if request.user.is_authenticated else None
+
+    # Read before the flush. auth.logout() empties the session, and these are
+    # the two things the provider request needs.
+    name = request.session.get(SESSION_CONNECTION_KEY)
+    id_token = request.session.get(SESSION_ID_TOKEN_KEY)
+
+    auth_logout(request)
+
+    destination: str | None = None
+    if name:
+        try:
+            destination = begin_logout(request, get_connection(name), id_token=id_token)
+        except ConfigurationError:
+            # The connection was renamed or removed while this session was
+            # alive. The local sign-out has already happened, which is the part
+            # that matters.
+            logger.warning(
+                "Session named connection %r, which is no longer configured [ref %s]",
+                name,
+                reference,
+            )
+
+    # Emitted after the destination is known, not before. Recording
+    # ``rp_initiated`` from whether the *session* named a connection would make
+    # the field say "we knew where to look" while reading as "the provider
+    # session ended", and the log would show a clean sign-out for a provider
+    # that was never contacted.
+    emit(
+        Event.LOGOUT,
+        outcome=Outcome.SUCCESS,
+        actor=user,
+        request=request,
+        connection=name or "",
+        correlation_id=reference,
+        context={"rp_initiated": destination is not None},
+    )
+
+    if destination:
+        response: HttpResponse = HttpResponseRedirect(destination)
+    else:
+        # Terminal page rather than a redirect, and it says what did not
+        # happen. A provider with no end_session_endpoint means the provider
+        # session is still live, and someone who thinks they signed out on a
+        # shared machine should be told otherwise.
+        response = render(
+            request,
+            "bastion/logged_out.html",
+            {"reference": reference, "provider_session_ended": False},
+            status=200,
+        )
     response["Referrer-Policy"] = "no-referrer"
     return response
 
@@ -235,15 +328,27 @@ def _denied(
     return response
 
 
-def _establish_session(request: HttpRequest, user: AbstractBaseUser) -> None:
+def _establish_session(
+    request: HttpRequest,
+    user: AbstractBaseUser,
+    connection: Connection,
+    result: LoginResult,
+) -> None:
     """Discard everything from before the privilege transition, then log in.
 
     ``auth.login`` calls ``cycle_key`` only when ``SESSION_KEY`` is absent, so
     a re-login as the same user rotates nothing, and ``cycle_key`` keeps the
     session data either way. Flushing first is what actually guarantees the
     pre-authentication identifier and its contents do not survive.
+
+    The logout material is written *after* ``auth_login``, not before, because
+    the flush would otherwise take it straight back out.
     """
     request.session.flush()
     # Same stubs narrowing as the backend: auth.login is typed against the
     # configured user model, while the runtime contract is any AbstractBaseUser.
     auth_login(request, user, backend="bastion.backends.SSOBackend")  # type: ignore[arg-type]
+
+    request.session[SESSION_CONNECTION_KEY] = connection.identifier
+    if result.id_token:
+        request.session[SESSION_ID_TOKEN_KEY] = result.id_token

@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.contrib import admin
-from django.contrib.auth import get_user_model
+from django.contrib.auth import SESSION_KEY, get_user_model
 from django.test import Client
 from django.urls import reverse
 
@@ -196,7 +196,35 @@ class TestAuthenticatedWithoutStaff:
         client.force_login(plain_user, backend="bastion.backends.SSOBackend")
         response, _ = follow(client, "/admin/")
         assert b'method="post"' in response.content
-        assert b"/admin/logout/" in response.content
+        assert b"/sso/logout/" in response.content
+
+    def test_the_sign_out_control_actually_ends_the_session(
+        self, client: Client, plain_user
+    ) -> None:
+        """The control has to work for the population that sees the page.
+
+        It pointed at ``admin:logout``, which Django wraps in ``admin_view``.
+        That wrapper checks ``has_permission`` first and has a special case for
+        the logout path: redirect to the admin index *without calling the view*.
+        Since this page is only rendered when ``has_permission`` is false, the
+        button was a no-op for every single person who was ever shown it. It
+        answered 302 and left the session, and any stored ID token, in place --
+        on the page that tells them to sign out and try another account.
+
+        Asserting on the session rather than on the URL, because the previous
+        test asserted on the URL and passed throughout.
+        """
+        client.force_login(plain_user, backend="bastion.backends.SSOBackend")
+        session = client.session
+        session["_bastion_id_token"] = "header.payload.signature"
+        session.save()
+
+        response, _ = follow(client, "/admin/")
+        action = response.content.decode().split('action="')[1].split('"')[0]
+        client.post(action)
+
+        assert SESSION_KEY not in client.session, "the sign-out control did nothing"
+        assert "_bastion_id_token" not in client.session
 
     def test_a_deactivated_staff_user_is_handed_back_to_the_provider(
         self, client: Client, staff_user
@@ -237,6 +265,60 @@ class TestAuthorised:
     def test_a_hostile_next_falls_back_to_the_index(self, client: Client, staff_user) -> None:
         client.force_login(staff_user, backend="bastion.backends.SSOBackend")
         response = client.get("/admin/login/?next=https://evil.test/")
+        assert response["Location"] == reverse("admin:index")
+
+
+@pytest.mark.usefixtures("sso_configured")
+class TestTheLogoutButton:
+    """The button in the admin header, which is the one people actually press.
+
+    Django's own logout clears the local session and stops there. The provider
+    cookie survives it, so the next click on the admin comes back with a fresh
+    authorization code and no prompt, and someone who pressed Log out on a
+    shared machine is still signed in. Routing the button through the provider
+    is the fix; telling people to visit a different URL is not.
+    """
+
+    def test_it_goes_through_the_provider(self, client: Client, staff_user) -> None:
+        client.force_login(staff_user, backend="bastion.backends.SSOBackend")
+        session = client.session
+        session["_bastion_connection"] = "corp"
+        session.save()
+
+        response = client.post("/admin/logout/")
+
+        assert response.status_code in (200, 302)
+        if response.status_code == 302:
+            assert response["Location"].startswith("https://idp.example.test")
+        else:
+            # Discovery is unreachable in this test module, so the terminal
+            # page is the correct outcome. What must not happen is a silent
+            # local-only logout that claims to have signed the person out.
+            assert b"still signed in with your identity provider" in response.content
+
+    def test_the_session_is_gone_either_way(self, client: Client, staff_user) -> None:
+        from django.contrib.auth import SESSION_KEY
+
+        client.force_login(staff_user, backend="bastion.backends.SSOBackend")
+        client.post("/admin/logout/")
+        assert SESSION_KEY not in client.session
+
+    def test_a_get_is_still_refused(self, client: Client, staff_user) -> None:
+        """Deferred to Django, so its 405 stays Django's 405."""
+        client.force_login(staff_user, backend="bastion.backends.SSOBackend")
+        assert client.get("/admin/logout/").status_code == 405
+
+    def test_without_sso_the_stock_logout_is_served(
+        self, client: Client, staff_user, settings
+    ) -> None:
+        settings.BASTION = {"CONNECTIONS": {}}
+        client.force_login(staff_user, backend="django.contrib.auth.backends.ModelBackend")
+        response = client.post("/admin/logout/")
+
+        # Django's LogoutView redirects back to the admin. A project that
+        # installed the app but has not configured a provider must get exactly
+        # that, not a page about an identity provider it does not have.
+        assert response.status_code == 302
         assert response["Location"] == reverse("admin:index")
 
 
