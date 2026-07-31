@@ -273,7 +273,6 @@ def build_end_session_url(
     client_id: str,
     id_token_hint: str | None = None,
     post_logout_redirect_uri: str | None = None,
-    state: str | None = None,
 ) -> str:
     """Build the RP-initiated logout URL (OIDC RP-Initiated Logout 1.0 §2).
 
@@ -287,14 +286,17 @@ def build_end_session_url(
     confirmation, which Keycloak does. That is the reason the connection can
     keep the ID token: a logout the person has to confirm is a logout half of
     them will abandon.
+
+    The spec's optional ``state`` is deliberately absent. It is only useful for
+    correlating the post-logout redirect, which needs a handler at the
+    ``post_logout_redirect_uri`` that this package does not have, so accepting it
+    would be a parameter that does nothing. Add it with the handler.
     """
     params: dict[str, str] = {"client_id": client_id}
     if id_token_hint:
         params["id_token_hint"] = id_token_hint
     if post_logout_redirect_uri:
         params["post_logout_redirect_uri"] = post_logout_redirect_uri
-    if state:
-        params["state"] = state
 
     separator = "&" if "?" in end_session_endpoint else "?"
     return f"{end_session_endpoint}{separator}{urlencode(params)}"
