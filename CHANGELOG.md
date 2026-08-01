@@ -10,7 +10,43 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a4.
+Nothing since 0.0.1a5.
+
+## [0.0.1a5] - 2026-08-01
+
+One setting that was declared, documented, and read by nothing now takes effect.
+Small, but it changes where people land after signing in, so it is worth a
+release of its own rather than riding along silently.
+
+### Fixed
+
+- **`BASTION["SUCCESS_URL"]` was never read.** `views.py` redirected to its own
+  `DEFAULT_SUCCESS_URL` constant, so setting it changed where nobody landed. A
+  `next` parameter still wins over it; the setting answers the case where
+  nothing said where to go.
+
+  There was already a passing test asserting `get_setting("SUCCESS_URL")`
+  returns an override. It proved the settings machinery worked, not that
+  anything called it, which is how this survived four releases. The new tests
+  assert the redirect.
+
+  The setting is **not** put through `safe_redirect_url`, deliberately: `next`
+  is request input and is host-checked on the way out, while this is deployer
+  configuration, and host-checking it would break landing people on a separate
+  front end after sign-in. The [settings reference](docs/reference/settings.md)
+  says so.
+
+### Changed
+
+- **If you set `SUCCESS_URL` and worked around it not applying, it now
+  applies.** Nothing else moves: unset, the destination is `/` exactly as
+  before.
+
+### Removed
+
+- `bastion.views.DEFAULT_SUCCESS_URL`. It was never documented and existed only
+  as the hardcoded value that shadowed the setting. `conf.DEFAULTS` already
+  holds `/`, and a second copy is how the two drift apart again.
 
 ## [0.0.1a4] - 2026-08-01
 
@@ -223,7 +259,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a4...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a5...HEAD
+[0.0.1a5]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a4...v0.0.1a5
 [0.0.1a4]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a3...v0.0.1a4
 [0.0.1a3]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a2...v0.0.1a3
 [0.0.1a2]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a1...v0.0.1a2

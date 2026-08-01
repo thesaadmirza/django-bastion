@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "django-bastion"
-version = "0.0.1a4"
+version = "0.0.1a5"
 description = "Enterprise SSO and identity governance for Django: admin login, claims-to-role mapping, audit, and break-glass."
 readme = "README.md"
 license = "Apache-2.0"
