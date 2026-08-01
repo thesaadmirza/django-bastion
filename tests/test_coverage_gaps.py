@@ -24,6 +24,7 @@ from bastion.exceptions import ConfigurationError
 from bastion.protocols.oidc.transaction import MemoryTransactionStore
 from tests.idp.provider import FakeIdP
 from tests.idp.transport import FakeTransport
+from tests.test_login_flow import only_connections
 
 User = get_user_model()
 
@@ -139,7 +140,7 @@ class TestGroupMatchRequirement:
             require_group_match=True,
         )
         monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-        monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+        monkeypatch.setattr("bastion.views.get_setting", only_connections)
         built.transport = transport
         return built
 
