@@ -10,7 +10,63 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a3.
+Nothing since 0.0.1a4.
+
+## [0.0.1a4] - 2026-08-01
+
+Two settings that read as security controls and enforced nothing now enforce
+something. **One of them changes a default and one can refuse logins that
+previously succeeded**, so read the two Changed entries before upgrading.
+
+### Security
+
+- **`IDENTITY["REQUIRE_VERIFIED_EMAIL"]` was never read.** It defaulted to
+  `True` and was documented, while a user whose provider explicitly marked the
+  address unverified was provisioned and, with a matching group, made staff.
+  Accounts are keyed on `(issuer, subject)`, so this is not account takeover by
+  itself; `user.email` is the field the rest of a Django project trusts, and a
+  provider where anyone can self-assert an address turns that into impersonation
+  one layer down.
+- **`ADMIN["require_mfa"]` was never read.** It appears in the README
+  quickstart, so a deployer following it believed the admin was MFA-protected
+  while a password-only sign-in walked straight in. It is now enforced in
+  `has_permission`, which runs on every admin request rather than only at
+  sign-in, so enabling it also covers sessions that already exist.
+
+### Changed
+
+- **`ADMIN["require_mfa"]` now defaults to `False`.** That is a fix rather than
+  a relaxation: it enforced nothing, so no deployment ever had this control from
+  this key. Defaulting it on would lock out every deployment whose provider does
+  not emit `amr`, which is opt-in on several of them. **If you had it set to
+  `True`, it now does what you thought it did** — confirm the claim arrives with
+  one sign-in before deploying, or your administrators are locked out.
+- **A login can now be refused where it previously succeeded**, when the
+  provider explicitly marks the address unverified. `Verified.UNKNOWN` still
+  passes, which is why Entra deployments are unaffected: Entra emits no
+  `email_verified` at all, and treating absent as unverified would refuse every
+  Entra login.
+
+### Added
+
+- `auth.mfa.missing` is emitted when the admin refuses a session for having one
+  factor. It was already in the catalogue with no emitter.
+- The access-denied page says which requirement failed. Telling someone their
+  group is missing when the real answer is the second factor sends them to a
+  service desk that will add them to a group and change nothing.
+- A test that fails when any key in `conf.DEFAULTS` is read by nothing and is
+  not listed as inert with a reason, so this class does not recur. It parses the
+  source rather than grepping it: the first version matched the setting name
+  inside the docstring explaining it and passed with the enforcement deleted.
+  Six keys are currently marked inert rather than fixed.
+
+### Fixed
+
+- The sign-out control on the access-denied page could not end the session. It
+  pointed at `admin:logout`, which Django wraps in `admin_view`; that wrapper
+  redirects the logout path to the admin index without calling the view when
+  `has_permission` is false, and that page is only rendered when it is false.
+  The button was a no-op for everyone ever shown it.
 
 ## [0.0.1a3] - 2026-07-31
 
@@ -167,7 +223,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a3...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a4...HEAD
+[0.0.1a4]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a3...v0.0.1a4
 [0.0.1a3]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a2...v0.0.1a3
 [0.0.1a2]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a1...v0.0.1a2
 [0.0.1a1]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a0...v0.0.1a1
