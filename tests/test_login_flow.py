@@ -30,6 +30,20 @@ def transport(idp: FakeIdP) -> FakeTransport:
     return FakeTransport(idp=idp)
 
 
+def only_connections(key: str):
+    """Stub ``bastion.views.get_setting`` for the connection lookup only.
+
+    These tests patch it so ``_resolve_connection`` finds exactly one
+    connection without touching settings. A ``lambda key: {"corp": {}}``
+    answered *every* key with that dict, which is fine until a view reads a
+    second setting -- SUCCESS_URL did, and got a dict where a URL belonged.
+    Delegating everything else keeps the stub honest as the views grow.
+    """
+    from bastion.conf import get_setting as real
+
+    return {"corp": {}} if key == "CONNECTIONS" else real(key)
+
+
 def make_connection(idp: FakeIdP, transport: FakeTransport, **overrides: Any) -> Connection:
     from bastion.protocols.oidc.transaction import MemoryTransactionStore
 
@@ -56,7 +70,7 @@ def connection(idp: FakeIdP, transport: FakeTransport, monkeypatch) -> Connectio
     built = make_connection(idp, transport)
     monkeypatch.setattr(connections_module, "get_connection", lambda name=None: built)
     monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-    monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+    monkeypatch.setattr("bastion.views.get_setting", only_connections)
     return built
 
 
@@ -307,7 +321,7 @@ class TestPrivilegeMapping:
     ) -> None:
         built = make_connection(idp, transport, staff_groups=("django-staff",))
         monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-        monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+        monkeypatch.setattr("bastion.views.get_setting", only_connections)
 
         login(client, built, transport, idp, groups=["django-staff"])
         assert User.objects.get().is_staff is True
@@ -318,7 +332,7 @@ class TestPrivilegeMapping:
         """Two-way, unlike is_staff. A revoked superuser must lose it at once."""
         built = make_connection(idp, transport, superuser_groups=("django-admins",))
         monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-        monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+        monkeypatch.setattr("bastion.views.get_setting", only_connections)
 
         login(client, built, transport, idp, groups=["django-admins"])
         assert User.objects.get().is_superuser is True
@@ -333,7 +347,7 @@ class TestPrivilegeMapping:
         of the admin."""
         built = make_connection(idp, transport, staff_groups=("django-staff",))
         monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-        monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+        monkeypatch.setattr("bastion.views.get_setting", only_connections)
 
         login(client, built, transport, idp, groups=["django-staff"])
         login(client, built, transport, idp, groups=[])
@@ -346,7 +360,7 @@ class TestEntra:
         transport = FakeTransport(idp=entra_idp)
         built = make_connection(entra_idp, transport, provider="entra")
         monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-        monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+        monkeypatch.setattr("bastion.views.get_setting", only_connections)
         built.transport = transport
         return built
 
@@ -377,7 +391,7 @@ class TestEntra:
             entra_idp, transport, provider="entra", staff_groups=("django-staff",)
         )
         monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-        monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+        monkeypatch.setattr("bastion.views.get_setting", only_connections)
 
         state = start(client)
         record = built.transactions._records[state]  # type: ignore[attr-defined]
