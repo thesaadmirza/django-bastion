@@ -63,7 +63,16 @@ DEFAULTS: dict[str, Any] = {
     "ADMIN": {
         "enabled": True,
         "connection": None,
-        "require_mfa": True,
+        # Off, and the change from True is a fix rather than a relaxation. It
+        # read as True and enforced nothing, so no deployment ever had admin MFA
+        # from this key; it is now enforced, and defaulting it on would have
+        # locked out every deployment whose provider does not emit `amr`, which
+        # is opt-in on several of them. A control that depends on a claim the
+        # provider may simply omit cannot fail closed by default without
+        # bricking the admin it protects. Turn it on after one sign-in shows the
+        # claim arriving -- `bastion_doctor` says the same about the per-
+        # connection flag.
+        "require_mfa": False,
         "reauth_max_age": 3600,
         "local_login": "breakglass_only",
     },

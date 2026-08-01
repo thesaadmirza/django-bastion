@@ -9,7 +9,7 @@ selection supports after-the-fact investigation. Without it, customers write it
 by hand from source, badly.
 
 Those first two are different questions, and this page used to answer only the
-first while claiming to answer both. **Thirteen of the thirty names below are
+first while claiming to answer both. **Twelve of the thirty names below are
 reserved and no code path emits them yet**, and each is marked. It matters
 because an auditor reading an unmarked `auth.mfa.satisfied` row would go looking
 for MFA records, and there are none. The rest of the vocabulary is here because
@@ -37,7 +37,7 @@ rules or compliance evidence reference it.
 | `auth.protocol.fallback` | Break-glass was used or attempted | Rare by design, critical severity, always alerts |
 | `auth.mfa.required` | **Reserved, not emitted yet.** A connection requires a second factor | |
 | `auth.mfa.satisfied` | **Reserved, not emitted yet.** The assertion showed one | The only durable evidence an MFA requirement was met at the moment of access |
-| `auth.mfa.missing` | **Reserved, not emitted yet.** It did not, and the login was refused | |
+| `auth.mfa.missing` | The admin required a second factor and the session's assertion showed none | Distinguishes the person who needs a group from the person who needs to re-authenticate properly. Both are refused at the same page, and a service desk that cannot tell them apart adds the first to a group and changes nothing |
 
 ## Identity lifecycle
 

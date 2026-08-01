@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from django.http import HttpRequest
 from django.urls import reverse
 
-from bastion.claims import IdentityClaims
+from bastion.claims import IdentityClaims, Verified
+from bastion.conf import get_setting
 from bastion.connections import Connection
 from bastion.exceptions import BastionError, TokenError, TransactionNotFound
 from bastion.protocols.oidc.client import exchange_code
@@ -158,6 +159,8 @@ def complete_login(request: HttpRequest, connection: Connection) -> LoginResult:
     if connection.require_mfa and not identity.mfa_satisfied:
         raise TokenError("connection requires MFA and the assertion did not carry it")
 
+    _check_email_verification(identity)
+
     return LoginResult(
         identity=identity,
         transaction=transaction,
@@ -165,6 +168,37 @@ def complete_login(request: HttpRequest, connection: Connection) -> LoginResult:
         # configured a use for should not survive this function.
         id_token=tokens.id_token if connection.store_id_token else "",
     )
+
+
+def _check_email_verification(identity: IdentityClaims) -> None:
+    """Refuse a login the provider has told us carries an unverified address.
+
+    ``IDENTITY["REQUIRE_VERIFIED_EMAIL"]`` was declared and documented with a
+    default of ``True`` and read by nothing, so an address the provider
+    explicitly marked unverified was written onto the user and, with a matching
+    group, granted staff.
+
+    Accounts are keyed on ``(issuer, subject)``, so this is not account takeover
+    by itself. What it is: ``user.email`` is the field the rest of a Django
+    project trusts -- for notification routing, for reconciliation against
+    another system, for deciding who a row belongs to. A provider where anyone
+    can self-assert an address turns that into impersonation one layer down.
+
+    **Only an explicit false is refused.** ``Verified.UNKNOWN`` passes, and that
+    is the whole reason the tri-state exists rather than a bool: Entra emits no
+    ``email_verified`` at all, so treating absent as unverified would refuse
+    every Entra login. The setting name promises more than that, which the
+    documentation now says outright.
+    """
+    if not identity.email:
+        # Nothing to verify. A provider that sends no address cannot have lied
+        # about one, and refusing here would break connections whose scopes do
+        # not include email.
+        return
+    if not get_setting("IDENTITY").get("REQUIRE_VERIFIED_EMAIL", True):
+        return
+    if identity.email_verified is Verified.NO:
+        raise TokenError("the provider marked this address unverified")
 
 
 def begin_logout(

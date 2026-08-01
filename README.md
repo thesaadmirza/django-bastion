@@ -40,6 +40,9 @@ BASTION = {
             "superuser_groups": ["django-admins"],
         },
     },
+    # require_mfa refuses admin access when the assertion showed one factor.
+    # Off by default: confirm your provider emits `amr` with a real sign-in
+    # first, because several make it opt-in.
     "ADMIN": {"connection": "corp", "require_mfa": True},
 }
 ```
