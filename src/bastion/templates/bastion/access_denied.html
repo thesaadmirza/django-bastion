@@ -45,7 +45,10 @@
     <dt>{% translate "You signed in as" %}</dt>
     <dd><code>{{ identity }}</code></dd>
 
-    {% if required_groups %}
+    {% if missing_mfa %}
+      <dt>{% translate "What is missing" %}</dt>
+      <dd>{% translate "A second factor. This sign-in used one." %}</dd>
+    {% elif required_groups %}
       <dt>{% translate "Access requires membership of" %}</dt>
       <dd>
         {% for group in required_groups %}
@@ -60,7 +63,15 @@
 
   <h2>{% translate "What to do next" %}</h2>
   <p>
-    {% if required_groups %}
+    {% if missing_mfa %}
+      {# The group is not the problem here, and saying it is sends the person to
+         a service desk that will add them to one and change nothing. #}
+      {% blocktranslate trimmed %}
+        Sign out and sign in again using your second factor. If you have not
+        set one up, your IT service desk can enrol you. Include the reference
+        so they can find this sign-in.
+      {% endblocktranslate %}
+    {% elif required_groups %}
       {% blocktranslate trimmed %}
         Ask your IT service desk to add this account to the group listed
         above. Include the reference so they can find this sign-in.
@@ -73,12 +84,14 @@
     {% endif %}
   </p>
 
-  <p>
-    {% blocktranslate trimmed %}
-      If you have a different work account that should have access, sign out
-      and try that one.
-    {% endblocktranslate %}
-  </p>
+  {% if not missing_mfa %}
+    <p>
+      {% blocktranslate trimmed %}
+        If you have a different work account that should have access, sign out
+        and try that one.
+      {% endblocktranslate %}
+    </p>
+  {% endif %}
 
   {% if logout_url %}
     <form method="post" action="{{ logout_url }}">

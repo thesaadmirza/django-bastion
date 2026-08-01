@@ -44,6 +44,12 @@ DEFAULT_SUCCESS_URL = "/"
 #: which one that was.
 SESSION_CONNECTION_KEY = "_bastion_connection"
 
+#: Whether the assertion that established this session showed a second factor.
+#: Recorded on every login so the admin gate can enforce ``ADMIN["require_mfa"]``
+#: on every request rather than only at the moment of sign-in, which is what
+#: makes turning the setting on affect sessions that already exist.
+SESSION_MFA_KEY = "_bastion_mfa_satisfied"
+
 #: The compact ID token, present only for connections with ``store_id_token``.
 #: Underscore-prefixed to match Django's own convention for session keys that
 #: are not application data.
@@ -356,5 +362,6 @@ def _establish_session(
     auth_login(request, user, backend="bastion.backends.SSOBackend")  # type: ignore[arg-type]
 
     request.session[SESSION_CONNECTION_KEY] = connection.identifier
+    request.session[SESSION_MFA_KEY] = result.identity.mfa_satisfied
     if result.id_token:
         request.session[SESSION_ID_TOKEN_KEY] = result.id_token
