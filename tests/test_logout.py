@@ -25,7 +25,7 @@ from bastion.protocols.oidc.transaction import build_end_session_url
 from bastion.views import SESSION_CONNECTION_KEY, SESSION_ID_TOKEN_KEY
 from tests.idp.provider import FakeIdP
 from tests.idp.transport import FakeTransport
-from tests.test_login_flow import login, make_connection
+from tests.test_login_flow import login, make_connection, only_connections
 
 pytestmark = pytest.mark.django_db
 
@@ -41,7 +41,7 @@ def wire(idp: FakeIdP, transport: FakeTransport, monkeypatch, **overrides: Any) 
     built = make_connection(idp, transport, **overrides)
     monkeypatch.setattr(connections_module, "get_connection", lambda name=None: built)
     monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
-    monkeypatch.setattr("bastion.views.get_setting", lambda key: {"corp": {}})
+    monkeypatch.setattr("bastion.views.get_setting", only_connections)
     return built
 
 

@@ -313,7 +313,6 @@ def test_documented_connections_have_what_the_loader_requires(page: str) -> None
 #: same reason: the honest version of an unfinished feature is a marked one.
 INERT_SETTINGS = {
     "BACKEND": "the backend is imported by path from AUTHENTICATION_BACKENDS, not from here",
-    "SUCCESS_URL": "views.py uses its own DEFAULT_SUCCESS_URL constant",
     "MAPPING": "the dict itself is never resolved; its keys arrive with the rule engine",
     "MAPPING.STRICT": "arrives with the rule engine, v0.2",
     "MAPPING.MANAGED_GROUPS": "arrives with the rule engine, v0.2",

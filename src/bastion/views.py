@@ -37,7 +37,10 @@ from bastion.pages import base_template
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SUCCESS_URL = "/"
+# DEFAULT_SUCCESS_URL used to live here and was read *instead* of
+# BASTION["SUCCESS_URL"], which is what made that setting a documented no-op.
+# It is gone rather than kept alongside: conf.DEFAULTS already holds "/" as the
+# default, and a second copy is how the two drift apart again.
 
 #: Which connection signed this session in. Written on every SSO login, because
 #: logout has to reach the same provider and the URL cannot be trusted to say
@@ -233,7 +236,12 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
         context={"mfa_satisfied": result.identity.mfa_satisfied},
     )
 
-    destination = result.transaction.redirect_to or DEFAULT_SUCCESS_URL
+    # The transaction's destination came from ``next`` and was already put
+    # through safe_redirect_url in begin_login, so it is host-checked. The
+    # setting is not, and deliberately: it is deployer configuration rather than
+    # request input, and validating it against the request host would break the
+    # legitimate case of landing people on a separate front end after login.
+    destination = result.transaction.redirect_to or get_setting("SUCCESS_URL")
     response = HttpResponseRedirect(destination)
     response["Referrer-Policy"] = "no-referrer"
     return response

@@ -74,6 +74,19 @@ The staff/superuser asymmetry is deliberate: a provider hiccup should not lock
 every administrator out of the admin, but a revoked superuser must lose it at
 once.
 
+### `SUCCESS_URL`
+
+Where a login lands when nothing said where to go. `/` by default.
+
+A `next` parameter wins over it, having already been host-checked by
+`safe_redirect_url` on the way out. The setting itself is **not** validated
+against the request host, deliberately: it is deployer configuration rather than
+request input, and host-checking it would break the legitimate case of landing
+people on a separate front end after sign-in.
+
+`BREAK_GLASS["SUCCESS_URL"]` is a separate value for the emergency route and
+defaults to `/admin/`.
+
 ## `ADMIN`
 
 | Key | Default | Meaning |
