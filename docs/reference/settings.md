@@ -31,7 +31,7 @@ BASTION = {
 |---|---|---|
 | `KEY` | `("issuer", "subject")` | What accounts are keyed on. **A startup check refuses anything else.** Email is mutable at the provider; keying on it is a live CVE in two shipping packages |
 | `LINKING_POLICY` | `"subject_only"` | `"verified_email_once"` links an existing account on first login when the address is verified, then pins to the subject. For migrating an existing user table |
-| `REQUIRE_VERIFIED_EMAIL` | `True` | |
+| `REQUIRE_VERIFIED_EMAIL` | `True` | Refuses a login the provider has **explicitly** marked unverified. `Verified.UNKNOWN` passes, which is the whole reason the tri-state exists: Entra emits no `email_verified` at all, so treating absent as unverified would refuse every Entra login. The name promises more than the behaviour, deliberately, because the alternative fails closed on providers that simply do not say |
 
 ## `CONNECTIONS`
 
@@ -80,6 +80,7 @@ once.
 |---|---|---|
 | `enabled` | `True` | When false, or when no connections exist, the stock password login is served |
 | `connection` | `None` | Which connection the admin uses. `None` means the only one |
+| `require_mfa` | `False` | Refuses **admin** access when the session's assertion showed no second factor, checked on every admin request rather than only at sign-in. Distinct from the per-connection `require_mfa`, which refuses the login outright: use this one when a single factor is enough for the rest of the site. **Verify the claim arrives before turning it on** — `amr` is opt-in on several providers, and this defaults off for that reason |
 
 ## `AUDIT`
 
