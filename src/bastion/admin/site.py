@@ -35,10 +35,13 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 
+from bastion.audit import emit
+from bastion.audit.events import Event, Outcome, Severity
 from bastion.conf import get_setting
 from bastion.flows import correlation_id
 from bastion.pages import ADMIN_BASE
 from bastion.redirects import safe_redirect_url
+from bastion.views import SESSION_MFA_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +77,36 @@ class SSOAdminSiteMixin:
             return stock
 
         if request.user.is_authenticated:
-            if not self.has_permission(request):  # type: ignore[attr-defined]
+            # No ignore needed now: the mixin defines has_permission itself.
+            if not self.has_permission(request):
                 # Terminal. Not a redirect, because the only place to redirect
                 # to is here.
                 return self.render_access_denied(request)
             return HttpResponseRedirect(self._success_url(request))
 
         return HttpResponseRedirect(self._sso_url(request))
+
+    # ------------------------------------------------------------ permission --
+
+    def has_permission(self, request: HttpRequest) -> bool:
+        """Django's staff test, plus ``ADMIN["require_mfa"]``.
+
+        Overridden here rather than checked in ``login`` because ``admin_view``
+        calls this on **every** admin request. Checking only at sign-in would
+        mean enabling the setting had no effect on the sessions that already
+        exist, which is the opposite of what someone turning on an MFA
+        requirement during an incident expects.
+
+        The distinction the per-connection ``require_mfa`` cannot express is the
+        reason this exists at all: a deployment may be content to let people into
+        the rest of the site with one factor and still want two for the admin.
+        Where both are set the connection refuses first, at the callback, and
+        nobody reaches here.
+        """
+        allowed: bool = super().has_permission(request)  # type: ignore[misc]
+        if not allowed or not self._admin_settings().get("require_mfa", False):
+            return allowed
+        return bool(request.session.get(SESSION_MFA_KEY, False))
 
     # ----------------------------------------------------------------- logout --
 
@@ -148,9 +174,34 @@ class SSOAdminSiteMixin:
         here is the most common usability failure in enterprise SSO: the person
         is told "access denied" and cannot tell which account they used, which
         group they are missing, or who to ask. All three are on this page.
+
+        Which requirement failed is on it too. Telling someone their group is
+        missing when the real answer is that their sign-in showed one factor
+        sends them to a service desk that will add them to a group and change
+        nothing.
         """
         reference = correlation_id()
-        logger.info("Admin access denied for %s [ref %s]", request.user.get_username(), reference)
+        missing_mfa = self._mfa_is_the_blocker(request)
+        logger.info(
+            "Admin access denied for %s [ref %s]: %s",
+            request.user.get_username(),
+            reference,
+            "no second factor" if missing_mfa else "no matching group",
+        )
+
+        if missing_mfa:
+            # The event already existed in the catalogue and nothing emitted it.
+            emit(
+                Event.MFA_MISSING,
+                outcome=Outcome.DENIED,
+                actor=request.user,
+                request=request,
+                severity=Severity.NOTICE,
+                connection=self._connection_name() or "",
+                correlation_id=reference,
+                is_privileged=True,
+                context={"reason": "admin requires a second factor"},
+            )
 
         # Not ``admin:logout``. Django wraps that route in ``admin_view``, whose
         # first act is a ``has_permission`` check, and there is a special case
@@ -180,13 +231,29 @@ class SSOAdminSiteMixin:
                 "base_template": ADMIN_BASE,
                 "reference": reference,
                 "identity": getattr(request.user, "email", "") or request.user.get_username(),
-                "required_groups": self._required_groups(),
+                "required_groups": () if missing_mfa else self._required_groups(),
+                "missing_mfa": missing_mfa,
                 "logout_url": logout_url,
             },
             status=403,
         )
         response["Referrer-Policy"] = "no-referrer"
         return response
+
+    def _mfa_is_the_blocker(self, request: HttpRequest) -> bool:
+        """Whether the second factor, rather than the group, is what is missing.
+
+        Deliberately narrow: it answers true only when the person would already
+        be through on Django's own staff test. Someone who is neither staff nor
+        MFA-satisfied is told about the group, because being added to the group
+        is what they have to ask for first.
+        """
+        if not self._admin_settings().get("require_mfa", False):
+            return False
+        user = request.user
+        if not (getattr(user, "is_active", False) and getattr(user, "is_staff", False)):
+            return False
+        return not request.session.get(SESSION_MFA_KEY, False)
 
     # ----------------------------------------------------------------- config --
 

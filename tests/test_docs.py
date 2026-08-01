@@ -301,3 +301,90 @@ def test_documented_connections_have_what_the_loader_requires(page: str) -> None
         keys = set(re.findall(r'"([a-z_]+)"\s*:', block))
         missing = set(_REQUIRED) - keys
         assert not missing, f"{page} shows a connection missing {sorted(missing)}"
+
+
+#: Settings declared in ``conf.DEFAULTS`` that nothing reads yet, each with the
+#: reason. The list exists so that "declared but inert" is a visible, shrinking
+#: set rather than something a reader discovers by grepping, which is how
+#: ADMIN["require_mfa"] and IDENTITY["REQUIRE_VERIFIED_EMAIL"] both sat there
+#: reading as security controls while enforcing nothing.
+#:
+#: Same shape as the reserved-event markers in the audit catalogue, and for the
+#: same reason: the honest version of an unfinished feature is a marked one.
+INERT_SETTINGS = {
+    "BACKEND": "the backend is imported by path from AUTHENTICATION_BACKENDS, not from here",
+    "SUCCESS_URL": "views.py uses its own DEFAULT_SUCCESS_URL constant",
+    "MAPPING": "the dict itself is never resolved; its keys arrive with the rule engine",
+    "MAPPING.STRICT": "arrives with the rule engine, v0.2",
+    "MAPPING.MANAGED_GROUPS": "arrives with the rule engine, v0.2",
+    "IDENTITY.LINKING_POLICY": "verified_email_once is not built",
+    "ADMIN.reauth_max_age": "step-up re-authentication is not built",
+    "ADMIN.local_login": "break-glass is configured under BREAK_GLASS instead",
+}
+
+
+def _setting_names() -> list[str]:
+    from bastion.conf import DEFAULTS
+
+    names = []
+    for key, value in DEFAULTS.items():
+        if isinstance(value, dict) and value:
+            names.extend(f"{key}.{inner}" for inner in value)
+        names.append(key)
+    return names
+
+
+def _accessed_keys() -> set[str]:
+    """Every string literal the source actually *uses* as a key.
+
+    Parsed rather than grepped, and that distinction is the test. A text search
+    matches the setting name inside the very docstring that explains it, so the
+    first version of this passed with the enforcement deleted -- a guard that
+    cannot fail, which is worse than no guard. The AST sees only
+    ``get_setting("X")``, ``d["X"]`` and ``d.get("X")``.
+    """
+    import ast
+
+    found: set[str] = set()
+    for path in (ROOT / "src" / "bastion").rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
+                if isinstance(node.slice.value, str):
+                    found.add(node.slice.value)
+            elif isinstance(node, ast.Call):
+                name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+                if name in {"get", "get_setting"} and node.args:
+                    first = node.args[0]
+                    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                        found.add(first.value)
+    return found
+
+
+def test_every_declared_setting_is_read_somewhere_or_marked_inert() -> None:
+    """A setting that nothing reads is a security control that does not exist.
+
+    Two of these were found by hand: ADMIN["require_mfa"] defaulted to True,
+    appeared in the README quickstart, and enforced nothing; and
+    IDENTITY["REQUIRE_VERIFIED_EMAIL"] defaulted to True while an address the
+    provider marked unverified was provisioned and made staff. Neither had a
+    failing test, because an unenforced control cannot have one.
+    """
+    accessed = _accessed_keys()
+    unread = [
+        name
+        for name in _setting_names()
+        if name not in INERT_SETTINGS and name.split(".")[-1] not in accessed
+    ]
+
+    assert not unread, (
+        f"declared in conf.DEFAULTS and read nowhere: {sorted(unread)}. "
+        "Either wire it up or add it to INERT_SETTINGS with the reason."
+    )
+
+
+def test_the_inert_list_names_only_settings_that_exist() -> None:
+    """So the list shrinks when one is implemented instead of going stale."""
+    declared = set(_setting_names())
+    stale = sorted(set(INERT_SETTINGS) - declared)
+    assert not stale, f"INERT_SETTINGS names settings that no longer exist: {stale}"
