@@ -7,6 +7,7 @@ deployment looks verified when it is not.
 from __future__ import annotations
 
 import pytest
+from django.contrib.admin.sites import all_sites
 from django.test import override_settings
 
 from bastion import checks
@@ -97,7 +98,28 @@ class TestConnections:
         """Not just the first. Fixing one at a time is how a deploy takes four tries."""
         messages = checks.check_connections(None)
         assert len(messages) == 2
-        assert {"'a'", "'b'"} <= {word for m in messages for word in str(m.msg).split()}
+        # Sorted, so the order is the production code's promise, not luck.
+        assert "'a'" in str(messages[0].msg)
+        assert "'b'" in str(messages[1].msg)
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, auth_method="nonsense")}})
+    def test_a_bad_auth_method_is_an_error_not_a_traceback(self) -> None:
+        """It escaped as ValueError and took down every manage.py command."""
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, scopes=None)}})
+    def test_an_uniterable_scopes_is_an_error_not_a_traceback(self) -> None:
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, identifier="other")}})
+    def test_identifier_is_not_settable_from_config(self) -> None:
+        """The loader supplies it; accepting it duplicated the keyword argument."""
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, _lock="nonsense")}})
+    def test_private_fields_are_not_settable_from_config(self) -> None:
+        """They are init fields, so the bare field list let settings set the lock."""
+        assert "bastion.E027" in _ids(checks.check_connections(None))
 
     @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
     def test_valid_connection_passes(self) -> None:
@@ -116,10 +138,33 @@ class TestConnections:
     def test_admin_pointing_at_a_real_connection_passes(self) -> None:
         assert checks.check_connections(None) == []
 
-    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}, "ADMIN": {"connection": None}})
     def test_unset_admin_connection_passes(self) -> None:
-        """None is the default and means the admin is not behind bastion."""
+        """None is the default. Without the guard, it is a name nothing matches."""
         assert checks.check_connections(None) == []
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    def test_a_site_attribute_pointing_at_nothing_is_an_error(self) -> None:
+        """sso_connection beats ADMIN["connection"], so it is the one that matters."""
+        from bastion.admin.site import SSOAdminSite
+
+        site = SSOAdminSite()
+        site.sso_connection = "typo"
+        try:
+            assert "bastion.E028" in _ids(checks.check_connections(None))
+        finally:
+            all_sites.discard(site)
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    def test_a_site_attribute_pointing_at_a_real_connection_passes(self) -> None:
+        from bastion.admin.site import SSOAdminSite
+
+        site = SSOAdminSite()
+        site.sso_connection = "corp"
+        try:
+            assert checks.check_connections(None) == []
+        finally:
+            all_sites.discard(site)
 
     @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
     def test_check_does_not_populate_the_connection_cache(self) -> None:

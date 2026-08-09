@@ -21,7 +21,6 @@ from django.conf import settings
 from django.core.checks import CheckMessage, Error, Tags, Warning, register
 
 from bastion.conf import get_setting
-from bastion.connections import build_connection
 from bastion.exceptions import ConfigurationError
 
 # Django's own defaults are wrong for a deployment that carries session
@@ -166,16 +165,23 @@ def check_connections(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
     kept in step with the first: unknown keys, unknown providers and bad
     ``auth_method`` values are all caught here for free, and cannot drift.
     Construction touches no network by design.
+
+    This relies on ``build_connection`` raising ``ConfigurationError`` and
+    nothing else. It did not, until adding this check surfaced it -- a bad
+    ``auth_method`` escaped as ``ValueError`` and aborted the check framework,
+    which runs ahead of nearly every management command.
     """
+    from bastion.connections import build_connection
+
     errors: list[CheckMessage] = []
     connections = get_setting("CONNECTIONS")
 
-    for identifier in sorted(connections):
+    for identifier, config in sorted(connections.items()):
         try:
             # Deliberately not get_connection(): reporting every broken entry
             # beats stopping at the first, and the check should not leave a
             # half-populated cache behind.
-            build_connection(identifier, dict(connections[identifier]))
+            build_connection(identifier, config)
         except ConfigurationError as exc:
             errors.append(
                 Error(
@@ -189,20 +195,49 @@ def check_connections(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
                 )
             )
 
-    admin_connection = get_setting("ADMIN").get("connection")
-    if admin_connection is not None and admin_connection not in connections:
-        errors.append(
-            Error(
-                f"ADMIN['connection'] is {admin_connection!r}, which is not configured.",
-                hint=(
-                    f"Configured: {sorted(connections) or 'none'}. A name that "
-                    "resolves to nothing leaves the admin with no way in "
-                    "except break-glass."
-                ),
-                id="bastion.E028",
+    for source, name in _admin_connection_names():
+        if name not in connections:
+            errors.append(
+                Error(
+                    f"{source} is {name!r}, which is not configured.",
+                    hint=(
+                        f"Configured: {sorted(connections) or 'none'}. A name "
+                        "that resolves to nothing leaves the admin with no way "
+                        "in except break-glass."
+                    ),
+                    id="bastion.E028",
+                )
             )
-        )
     return errors
+
+
+def _admin_connection_names() -> list[tuple[str, str]]:
+    """Every place a connection is named for the admin, with where it came from.
+
+    Two of them, and the class attribute wins:
+    ``SSOAdminSiteMixin._connection_name`` reads ``self.sso_connection or
+    ADMIN["connection"]``. Checking only the setting would validate the pointer
+    that loses and pass a site whose ``sso_connection`` is a typo.
+    """
+    found: list[tuple[str, str]] = []
+
+    configured = get_setting("ADMIN").get("connection")
+    if configured is not None:
+        found.append(('ADMIN["connection"]', str(configured)))
+
+    # The admin is optional, and a check must not be the thing that requires it.
+    try:
+        from django.contrib.admin.sites import all_sites
+
+        from bastion.admin.site import SSOAdminSiteMixin
+    except ImportError:  # pragma: no cover - django.contrib.admin not installed
+        return found
+
+    for site in all_sites:
+        name = getattr(site, "sso_connection", None)
+        if isinstance(site, SSOAdminSiteMixin) and name is not None:
+            found.append((f"{type(site).__name__}.sso_connection", str(name)))
+    return found
 
 
 @register(Tags.security)
