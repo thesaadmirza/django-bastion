@@ -10,7 +10,43 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a6.
+Nothing since 0.0.1a7.
+
+## [0.0.1a7] - 2026-08-11
+
+**The installable package is identical to 0.0.1a6.** Same code, same
+dependencies, only the version string differs. Nothing here is a reason to
+upgrade, and if you are on a6 you can stay there.
+
+What changed is the publishing pipeline, which failed twice while cutting a6
+and needed fixing before the next real release depended on it. This release
+exists to run the corrected pipeline end to end against PyPI, because a release
+path that has only ever been tested by releasing is one you find out about at
+the worst moment.
+
+### Fixed
+
+- **Uploads were refused over packaging metadata.** hatchling emits core
+  metadata 2.5 now, and the Twine bundled in the pinned publish action predates
+  it, so the upload died at `'2.5' is not a valid metadata version` before it
+  started. The action moves to v1.14.2, which carries Twine 7.
+
+  Capping hatchling would have been the wrong end: 1.30.0 emitted 2.5, 1.30.1
+  and 1.31.0 went back to 2.4, and 1.32.0 emits it again, so a cap holds a door
+  shut against something the ecosystem is midway through adopting.
+
+- **The publish action was pinned to a tag object rather than a commit.** The
+  action is a Docker action and its image is published per commit, so the pin
+  resolved to nothing and the run died at `manifest unknown`.
+
+- **TestPyPI ran only on manual dispatch**, so no real release ever reached it.
+  It now runs ahead of PyPI on tag pushes, where both of the failures above
+  would have surfaced against an index whose version numbers are free.
+
+  `skip-existing` is set there and deliberately not on PyPI. Retrying a version
+  is the ordinary way out of a failed release, and TestPyPI refuses a file it
+  already holds, so without it the gate would fail on the second attempt — the
+  one that matters. On PyPI an existing version must still stop the release.
 
 ## [0.0.1a6] - 2026-08-11
 
