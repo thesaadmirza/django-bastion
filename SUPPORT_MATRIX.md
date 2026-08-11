@@ -36,16 +36,29 @@ The floor rises to 3.12 when we drop Django 5.2, and not before.
 |---|---|---|
 | **1** | PostgreSQL 14+ | Recommended for production. The suite passes and nothing had to be worked around to get there. |
 | **2** | SQLite 3.37+ | The suite passes. Three concurrency tests skip, because SQLite serialises writes and a lock race cannot be observed either way. Fine for development, CI and single-node evaluation. |
-| **3** | MySQL 8.0+ | The suite passes, after the deadlock fix described below. |
-| **3** | MariaDB 10.6+ | The suite passes. Django's MySQL backend drives both, and MariaDB needed nothing MySQL did not. |
+| **3** | MySQL, at whatever version your Django requires | The suite passes, after the deadlock fix described below. |
+| **3** | MariaDB, at whatever version your Django requires | The suite passes. Django's MySQL backend drives both, and MariaDB needed nothing MySQL did not. |
 | — | Oracle | Not supported. We will not accept Oracle bug reports. |
 
-Versions actually exercised: PostgreSQL 16.9, MySQL 8.4.11, MariaDB 10.6.27 and 11.4.12, each at 695
-tests, and SQLite at 692 passed with 3 skipped. Every one of those runs happens in CI on each push, so the
-table above stays a test result rather than a recollection.
+The floor on those two is Django's, not ours, and Django moves it:
 
-MariaDB is tested at 10.6 in CI rather than at a current release, because 10.6 is the floor this table
-claims and the floor is the version most likely to break. 11.4 was run by hand and passed identically.
+| Django | MySQL | MariaDB |
+|---|---|---|
+| 5.2 | 8.0.11 | 10.5 |
+| 6.0 | 8.0.11 | 10.6 |
+| 6.1 | 8.4 | 10.11 |
+
+Below the floor Django refuses to connect at all, so this is not a question of whether the suite passes.
+
+CI runs the whole suite against PostgreSQL 16, MySQL 8.4, MariaDB 10.11 and SQLite on every push. The
+three concurrency tests skip on SQLite, which serialises writes and so cannot show a lock race either
+way; nothing else is skipped anywhere.
+
+The two are pinned at the floor rather than a current release, because the floor is the version most
+likely to break. That has a failure mode worth naming: when Django 6.1 raised MariaDB from 10.6 to 10.11,
+every database run started failing on commits that changed nothing, and the breakage looked like whatever
+branch happened to be open. A test now compares the pinned images against the floor the installed Django
+declares, so the next time this happens it fails with the new number in the message.
 
 ### The MySQL deadlock
 
