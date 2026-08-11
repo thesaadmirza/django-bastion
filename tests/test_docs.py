@@ -169,6 +169,53 @@ def test_the_changelog_has_a_section_for_this_version() -> None:
     assert f"## [{declared['project']['version']}]" in changelog
 
 
+def _django_floor(*, mariadb: bool) -> tuple[int, ...]:
+    """The minimum server version the installed Django enforces.
+
+    Read off the descriptor rather than a live connection, because this has to
+    work in the plain test job where no MySQL is running.
+    """
+    from types import SimpleNamespace
+
+    from django.db.backends.mysql.features import DatabaseFeatures
+
+    descriptor = DatabaseFeatures.__dict__["minimum_database_version"]
+    resolve = getattr(descriptor, "func", None) or descriptor.fget
+    fake = SimpleNamespace(connection=SimpleNamespace(mysql_is_mariadb=mariadb))
+    return tuple(resolve(fake))
+
+
+@pytest.mark.parametrize(
+    ("service", "mariadb"),
+    [("mariadb", True), ("mysql", False)],
+)
+def test_ci_runs_a_server_the_installed_django_will_talk_to(service: str, mariadb: bool) -> None:
+    """The pinned image has to satisfy Django's floor, and Django moves it.
+
+    Django 6.1 raised MariaDB from 10.6 to 10.11 and MySQL from 8.0.11 to 8.4.
+    The workflow still pinned mariadb:10.6, so every database run started
+    failing with `NotSupportedError` on a commit that changed nothing. Nobody
+    finds that by reading the diff; the failure looks like the branch.
+
+    Pinning the two together turns a Django release into a failing test with
+    the new number in the message, rather than a red job on unrelated work.
+    """
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    match = re.search(rf"^\s*image: {service}:(\S+)$", workflow, re.M)
+    assert match, f"no {service} image pinned in ci.yml"
+
+    pinned = tuple(int(part) for part in match.group(1).split("."))
+    floor = _django_floor(mariadb=mariadb)
+
+    # Compare on the components the pin actually states: the images are tagged
+    # `10.11`, and Django's floor for MySQL carries a patch level.
+    assert pinned >= floor[: len(pinned)], (
+        f"ci.yml pins {service}:{match.group(1)}, but the installed Django "
+        f"requires {'.'.join(str(p) for p in floor)}. Raise the image, and the "
+        f"floor named in SUPPORT_MATRIX.md with it."
+    )
+
+
 def emitted_and_reserved() -> tuple[set[str], set[str]]:
     """Split the event vocabulary by whether any code path emits it."""
     import re
