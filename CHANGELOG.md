@@ -10,6 +10,18 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+Nothing since 0.0.1a6.
+
+## [0.0.1a6] - 2026-08-11
+
+A misconfigured connection is now caught by `manage.py check` instead of by the
+first person who tries to log in. Adding that check turned up two faults on the
+path it was checking, which is the part worth reading before upgrading: one of
+them could take down `manage.py` entirely on a config that previously only
+broke the login.
+
+Nothing changes for a correctly configured deployment.
+
 ### Added
 
 - **Connections are validated by `manage.py check`.** They are built on first
@@ -60,11 +72,11 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   setting was checked, so a typo in the attribute the docs recommend to
   customizers passed every check and 500'd on the admin login page.
 
-- **CI stopped being able to reach MariaDB.** Django 6.1 raised the MariaDB
-  floor from 10.6 to 10.11, and the workflow still pinned 10.6, so every
-  database run failed with `NotSupportedError` on commits that changed nothing.
-  Nothing in the package was wrong, which is the awkward part: the failure
-  looked like whichever branch happened to be open.
+- **CI stopped being able to reach MariaDB.** Nothing to do with an install;
+  this one is for contributors. Django 6.1 raised the MariaDB floor from 10.6
+  to 10.11, and the workflow still pinned 10.6, so every database run failed
+  with `NotSupportedError` on commits that changed nothing. The failure looked
+  like whichever branch happened to be open.
 
   A test now compares the pinned images against the floor the installed Django
   declares, so the next time Django moves it this fails with the new number in
