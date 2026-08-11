@@ -10,7 +10,55 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+### Added
+
+- **Connections are validated by `manage.py check`.** They are built on first
+  use, so a missing `client_id` or a mistyped key used to pass every check and
+  then fail at login instead. Usually in staging, where whoever hits it cannot
+  tell a configuration mistake from an outage.
+
+  `bastion.E027` reports every broken entry rather than stopping at the first.
+  `bastion.E028` catches an admin pointed at a connection nobody configured.
+  The check calls the same loader the login path calls instead of keeping its
+  own list of required keys, so unknown keys and unknown providers are caught
+  as well, and the two cannot disagree.
+
+  An install with no connections still starts. That was deliberate: `pip
+  install` followed by `manage.py check` should work before you have configured
+  anything.
+
+- The check-id table in the settings reference is now tested against the checks
+  that exist, in both directions. It is what a reader copies into
+  `SILENCED_SYSTEM_CHECKS`, and until now it was kept in step by hand.
+
+### Changed
+
+- The support matrix no longer names a MySQL or MariaDB floor of its own. That
+  floor is Django's and it moves between releases, so the page gives the number
+  per Django version instead of a single one that quietly goes stale. Below it
+  Django refuses to connect at all, so it was never a question of whether the
+  suite passes.
+
 ### Fixed
+
+- **`build_connection` raised exceptions no caller was catching.** Every caller
+  treats `ConfigurationError` as the whole contract, but a mistyped
+  `auth_method` came out as `ValueError` and a non-iterable `scopes` as
+  `TypeError`. On the login path that was a 500 instead of a clean refusal;
+  once the new check ran the same code at startup it aborted the check
+  framework, so `migrate`, `runserver` and `collectstatic` all died with a
+  traceback into `enum.py`.
+
+  Settings could also set `identifier` and the private cache fields, because
+  the unknown-key guard matched against every dataclass field and those are all
+  `init` fields. Setting `_lock` got you a connection whose lock was a string.
+
+  Found by adding the check above, not by the suite.
+
+- **The admin's connection pointer was validated in the wrong place.**
+  `sso_connection` on an admin site beats `ADMIN["connection"]`, and only the
+  setting was checked, so a typo in the attribute the docs recommend to
+  customizers passed every check and 500'd on the admin login page.
 
 - **CI stopped being able to reach MariaDB.** Django 6.1 raised the MariaDB
   floor from 10.6 to 10.11, and the workflow still pinned 10.6, so every
@@ -21,14 +69,6 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   A test now compares the pinned images against the floor the installed Django
   declares, so the next time Django moves it this fails with the new number in
   the message rather than turning up as someone else's red job.
-
-### Changed
-
-- The support matrix no longer names a MySQL or MariaDB floor of its own. That
-  floor is Django's and it moves between releases, so the page gives the number
-  per Django version instead of a single one that quietly goes stale. Below it
-  Django refuses to connect at all, so it was never a question of whether the
-  suite passes.
 
 ## [0.0.1a5] - 2026-08-01
 
