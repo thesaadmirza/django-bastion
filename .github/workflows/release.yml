@@ -122,8 +122,13 @@ jobs:
 
   # -------------------------------------------------------------- publish --
   testpypi:
+    # Runs on tag pushes too, ahead of PyPI, because it is the only step that
+    # exercises the upload path against a real index. Two releases in a row
+    # failed here -- once on metadata the bundled Twine would not accept, once
+    # on an action pin with no published image -- and both would have been
+    # caught for nothing if this had run first. A version burned on TestPyPI
+    # costs nothing; one burned on PyPI cannot be reused.
     name: Publish to TestPyPI
-    if: github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -146,11 +151,21 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           attestations: true
+          # A retry of the same version is the normal way out of a failed
+          # release: fix the workflow, move the tag, run it again. TestPyPI
+          # refuses a file it already holds, so without this the gate would
+          # fail on the second attempt at precisely the moment it is needed.
+          # Not set on PyPI below, where a version that already exists must
+          # stop the release rather than pass quietly.
+          skip-existing: true
 
   pypi:
     name: Publish to PyPI
     if: github.event_name == 'push'
-    needs: build
+    # TestPyPI first. Everything that can go wrong in an upload -- metadata the
+    # index rejects, a broken action pin, trusted publishing misconfigured --
+    # goes wrong there instead, against an index where the version is not spent.
+    needs: [build, testpypi]
     runs-on: ubuntu-latest
     environment:
       name: pypi
