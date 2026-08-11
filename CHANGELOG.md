@@ -10,7 +10,25 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a5.
+### Fixed
+
+- **CI stopped being able to reach MariaDB.** Django 6.1 raised the MariaDB
+  floor from 10.6 to 10.11, and the workflow still pinned 10.6, so every
+  database run failed with `NotSupportedError` on commits that changed nothing.
+  Nothing in the package was wrong, which is the awkward part: the failure
+  looked like whichever branch happened to be open.
+
+  A test now compares the pinned images against the floor the installed Django
+  declares, so the next time Django moves it this fails with the new number in
+  the message rather than turning up as someone else's red job.
+
+### Changed
+
+- The support matrix no longer names a MySQL or MariaDB floor of its own. That
+  floor is Django's and it moves between releases, so the page gives the number
+  per Django version instead of a single one that quietly goes stale. Below it
+  Django refuses to connect at all, so it was never a question of whether the
+  suite passes.
 
 ## [0.0.1a5] - 2026-08-01
 
