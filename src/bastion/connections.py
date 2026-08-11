@@ -164,9 +164,31 @@ _RENAMED_KEYS = {
 }
 
 
+#: Keys a settings entry is allowed to set.
+#:
+#: Derived from the dataclass rather than listed by hand, minus the two kinds
+#: of field settings has no business supplying: ``identifier``, which the
+#: loader passes itself, and the private caches. All of those are ``init``
+#: fields, so matching against the bare field list accepted ``_lock`` from
+#: settings and handed back a connection whose lock was a string.
+_SETTABLE_KEYS = frozenset(
+    name
+    for name, spec in Connection.__dataclass_fields__.items()
+    if spec.init and name != "identifier" and not name.startswith("_")
+)
+
+
 def build_connection(identifier: str, config: dict[str, Any]) -> Connection:
-    """Turn one settings entry into a Connection, or explain why not."""
-    unknown = set(config) - set(Connection.__dataclass_fields__)
+    """Turn one settings entry into a Connection, or explain why not.
+
+    ``ConfigurationError`` is the whole contract. Every caller relies on it --
+    the login path, ``bastion_doctor`` and the startup check all catch that and
+    nothing else -- so a value of the wrong shape must not escape as whatever
+    the coercion happened to raise. It used to: a mistyped ``auth_method`` came
+    out as ``ValueError`` and took down every ``manage.py`` command with a
+    traceback into ``enum.py``.
+    """
+    unknown = set(config) - _SETTABLE_KEYS
     if unknown:
         detail = ", ".join(
             f"{key!r} ({_RENAMED_KEYS[key]})" if key in _RENAMED_KEYS else repr(key)
@@ -181,13 +203,18 @@ def build_connection(identifier: str, config: dict[str, Any]) -> Connection:
             raise ConfigurationError(f"connection {identifier!r} is missing {name!r}")
 
     kwargs = dict(config)
-    for key in ("scopes", "staff_groups", "superuser_groups"):
-        if key in kwargs:
-            kwargs[key] = tuple(kwargs[key])
-    if "auth_method" in kwargs:
-        kwargs["auth_method"] = ClientAuthMethod(kwargs["auth_method"])
+    try:
+        for key in ("scopes", "staff_groups", "superuser_groups"):
+            if key in kwargs:
+                kwargs[key] = tuple(kwargs[key])
+        if "auth_method" in kwargs:
+            kwargs["auth_method"] = ClientAuthMethod(kwargs["auth_method"])
 
-    return Connection(identifier=identifier, **kwargs)
+        return Connection(identifier=identifier, **kwargs)
+    except (TypeError, ValueError) as exc:
+        # Not ConfigurationError: that one is already the right shape and
+        # carries a better message than anything wrapping it could.
+        raise ConfigurationError(f"connection {identifier!r} is not valid: {exc}") from exc
 
 
 def get_connection(identifier: str) -> Connection:
