@@ -133,10 +133,13 @@ jobs:
           --health-cmd "mysqladmin ping" --health-interval 10s
           --health-timeout 5s --health-retries 5
         ports: ["3306:3306"]
-      # 10.6 rather than something current, because the support matrix names
-      # 10.6 as the floor and the floor is the version most likely to break.
+      # The floor rather than something current, because the floor is the
+      # version most likely to break. This job installs the newest supported
+      # Django, so the floor is whatever that Django enforces: 6.1 raised it
+      # from 10.6 to 10.11, and 10.6 then failed every run here without a
+      # single line of this package changing. A test pins the two together.
       mariadb:
-        image: mariadb:10.6
+        image: mariadb:10.11
         env:
           MARIADB_ROOT_PASSWORD: bastion
           MARIADB_DATABASE: bastion
