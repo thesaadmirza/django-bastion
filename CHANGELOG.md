@@ -185,6 +185,14 @@ dropping it is the one outcome worse than a failed boot.
   `CODE_OF_CONDUCT.md`. They were the only markdown in the repository nothing
   checked, which is how an instruction to write files into a directory that does
   not exist survived as long as it did.
+- **The DCO sign-off is enforced rather than asserted.** A `dco` job checks
+  every commit a pull request adds for a `Signed-off-by` trailer matching that
+  commit's own author, so `CONTRIBUTING.md` asks for `git commit -s` again —
+  this time truthfully. It is fifteen lines of `git` rather than a third-party
+  action, because a supply-chain dependency in the CI of a security package
+  should have to earn its place, and it runs only on pull requests: the history
+  from before the check is unsigned and is not being rewritten to look
+  otherwise.
 
 ## [0.0.1a7] - 2026-08-11
 
