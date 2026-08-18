@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 from django.contrib.admin.sites import all_sites
+from django.contrib.auth.backends import BaseBackend, ModelBackend
 from django.test import override_settings
 
 from bastion import checks
@@ -55,6 +56,178 @@ class TestBackendOrdering:
     def test_sso_only_passes(self) -> None:
         assert checks.check_backend_ordering(None) == []
 
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "bastion.backends.SSOBackend",
+            "tests.test_checks.UsernameOrEmailBackend",
+        ]
+    )
+    def test_a_modelbackend_subclass_is_an_error(self) -> None:
+        """The string match let this through, and it closes nothing.
+
+        Deleting "django.contrib.auth.backends.ModelBackend" from the list made
+        the check pass while the subclass went on authenticating with a username
+        and a password exactly as before -- a green tick beside an unchanged
+        password path.
+        """
+        messages = checks.check_backend_ordering(None)
+        assert "bastion.E023" in _ids(messages)
+        assert "UsernameOrEmailBackend" in str(messages[0].msg)
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "bastion.backends.SSOBackend",
+            "tests.test_checks.NotAPasswordBackend",
+        ]
+    )
+    def test_an_unrelated_backend_passes(self) -> None:
+        """issubclass, not "anything that is not ours"."""
+        assert checks.check_backend_ordering(None) == []
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "bastion.backends.SSOBackend",
+            "myapp.backends.DoesNotExist",
+        ]
+    )
+    def test_an_unimportable_backend_is_left_to_django(self) -> None:
+        """Django raises on it at the first authenticate(); this must not."""
+        assert checks.check_backend_ordering(None) == []
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "bastion.backends.SSOBackend",
+            "django.contrib.auth.backends.ModelBackend",
+        ],
+        BASTION={"ADMIN": {"local_login": "elsewhere"}},
+    )
+    def test_a_declared_password_path_elsewhere_warns_instead(self) -> None:
+        """The opt-out for a project where the admin is one part of a bigger app.
+
+        Enabling break-glass to satisfy a check is turning on a credential
+        endpoint for the wrong reason. This records the decision instead, and
+        keeps recording it on every check run.
+        """
+        messages = checks.check_backend_ordering(None)
+        assert _ids(messages) == {"bastion.W031"}
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "bastion.backends.SSOBackend",
+            "django.contrib.auth.backends.ModelBackend",
+        ],
+        BASTION={
+            "ADMIN": {"local_login": "never"},
+            "BREAK_GLASS": {"ENABLED": True, "ALERT_SINKS": ["x.y"]},
+        },
+    )
+    def test_never_refuses_a_password_backend_even_with_breakglass(self) -> None:
+        assert "bastion.E023" in _ids(checks.check_backend_ordering(None))
+
+    @override_settings(BASTION={"ADMIN": {"local_login": "sometimes"}})
+    def test_an_unknown_local_login_value_is_an_error(self) -> None:
+        """A typo here would otherwise read as the strictest setting silently."""
+        assert "bastion.E024" in _ids(checks.check_backend_ordering(None))
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=["django.contrib.auth.backends.ModelBackend"],
+    )
+    def test_a_project_with_no_sso_backend_is_not_our_business(self) -> None:
+        assert checks.check_backend_ordering(None) == []
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "bastion.backends.SSOBackend",
+            "django.contrib.auth.backends.ModelBackend",
+        ]
+    )
+    def test_an_unimportable_modelbackend_is_still_counted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A broken entry elsewhere in the list must not turn the check off, and
+        the one path we know the meaning of is still read from its name."""
+        import django.utils.module_loading as loading
+
+        def refuse(path: str) -> object:
+            raise ImportError(path)
+
+        monkeypatch.setattr(loading, "import_string", refuse)
+        assert "bastion.E023" in _ids(checks.check_backend_ordering(None))
+
+
+class UsernameOrEmailBackend(ModelBackend):
+    """The shape from the report: a subclass, with the parent removed."""
+
+
+class NotAPasswordBackend(BaseBackend):
+    pass
+
+
+class TestBreakGlassNetworks:
+    @override_settings(
+        BASTION={"BREAK_GLASS": {"ENABLED": True, "ALERT_SINKS": ["x.y"], "ALLOWED_NETWORKS": []}}
+    )
+    def test_an_empty_allowlist_warns(self) -> None:
+        """The warning two docstrings promised and nothing implemented."""
+        assert "bastion.W032" in _ids(checks.check_breakglass_networks(None))
+
+    @override_settings(
+        BASTION={
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": ["x.y"],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8"],
+            }
+        }
+    )
+    def test_a_configured_allowlist_passes(self) -> None:
+        assert checks.check_breakglass_networks(None) == []
+
+    @override_settings(
+        BASTION={
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": ["x.y"],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8", "office"],
+            }
+        }
+    )
+    def test_an_entry_that_is_not_a_network_is_an_error(self) -> None:
+        """ipaddress raises on it inside the gate, so it is a 500 on the
+        emergency login discovered during the emergency."""
+        messages = checks.check_breakglass_networks(None)
+        assert "bastion.E102" in _ids(messages)
+        assert "'office'" in str(messages[0].msg)
+
+    def test_disabled_passes(self) -> None:
+        assert checks.check_breakglass_networks(None) == []
+
+
+class TestLinkingPolicy:
+    @override_settings(BASTION={"IDENTITY": {"LINKING_POLICY": "email"}})
+    def test_an_unknown_policy_is_an_error(self) -> None:
+        """It used to fall through to subject-only, which looks exactly like
+        linking that is on and never matches anybody."""
+        assert "bastion.E029" in _ids(checks.check_linking_policy(None))
+
+    @override_settings(BASTION={"IDENTITY": {"LINKING_POLICY": "verified_email_once"}})
+    def test_linking_without_pinned_domains_is_an_error(self) -> None:
+        assert "bastion.E029" in _ids(checks.check_linking_policy(None))
+
+    @override_settings(
+        BASTION={
+            "IDENTITY": {
+                "LINKING_POLICY": "verified_email_once",
+                "LINKABLE_EMAIL_DOMAINS": ["example.com"],
+            }
+        }
+    )
+    def test_linking_with_pinned_domains_passes(self) -> None:
+        assert checks.check_linking_policy(None) == []
+
+    def test_the_default_passes(self) -> None:
+        assert checks.check_linking_policy(None) == []
+
 
 class TestBreakGlassAlerting:
     @override_settings(BASTION={"BREAK_GLASS": {"ENABLED": True, "ALERT_SINKS": []}})
@@ -76,12 +249,30 @@ GOOD = {"issuer": "https://idp.test", "client_id": "abc", "provider": "entra"}
 
 class TestConnections:
     @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, client_id="")}})
-    def test_empty_client_id_is_an_error(self) -> None:
-        assert "bastion.E027" in _ids(checks.check_connections(None))
+    def test_empty_client_id_is_a_warning(self) -> None:
+        """Absent, not wrong.
+
+        Erroring on it is what forces settings to be written conditionally --
+        ``"CONNECTIONS": {...} if CLIENT_ID else {}`` -- just to keep a
+        developer checkout and CI booting. The environment says why instead.
+        """
+        assert _ids(checks.check_connections(None)) == {"bastion.W027"}
 
     @override_settings(BASTION={"CONNECTIONS": {"corp": {"client_id": "abc"}}})
-    def test_missing_issuer_is_an_error(self) -> None:
-        assert "bastion.E027" in _ids(checks.check_connections(None))
+    def test_missing_issuer_is_a_warning(self) -> None:
+        assert _ids(checks.check_connections(None)) == {"bastion.W027"}
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, client_id="")}})
+    def test_an_incomplete_connection_still_fails_the_doctor(self) -> None:
+        """The warning is not a downgrade of the finding, only of where it stops
+        a deploy. The pipeline gate keeps refusing it."""
+        import io
+
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with pytest.raises(CommandError, match="found problems"):
+            call_command("bastion_doctor", "--offline", stdout=io.StringIO())
 
     @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, provider="nope")}})
     def test_unknown_provider_is_an_error(self) -> None:
@@ -90,6 +281,15 @@ class TestConnections:
     @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, discovery="https://x.test")}})
     def test_renamed_key_is_an_error(self) -> None:
         assert "bastion.E027" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": dict(GOOD, require_group_match=True)}})
+    def test_the_old_group_match_key_is_refused_with_its_new_name(self) -> None:
+        """Accepted-and-ignored would silently drop the only control stopping an
+        unprivileged account from holding a session, which is the opposite of
+        what setting it asks for."""
+        messages = checks.check_connections(None)
+        assert "bastion.E027" in _ids(messages)
+        assert "require_privileged_user" in str(messages[0].msg)
 
     @override_settings(
         BASTION={"CONNECTIONS": {"a": {"client_id": "x"}, "b": {"issuer": "https://b.test"}}}
@@ -128,11 +328,91 @@ class TestConnections:
     def test_no_connections_passes(self) -> None:
         assert checks.check_connections(None) == []
 
+    def test_no_connections_does_not_import_the_oidc_stack(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Django runs system checks ahead of nearly every management command.
+
+        Importing bastion.connections pulls in the OIDC package and through it
+        cryptography -- about 120ms cold -- which every command in every
+        environment paid, including the ones with SSO switched off and nothing
+        here to check.
+        """
+        import builtins
+
+        real_import = builtins.__import__
+        imported: list[str] = []
+
+        def spy(name: str, *args: object, **kwargs: object) -> object:
+            imported.append(name)
+            return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(builtins, "__import__", spy)
+        checks.check_connections(None)
+        assert "bastion.connections" not in imported
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    def test_a_configured_connection_still_imports_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The other half of the early return: the work still happens when there
+        is work."""
+        import builtins
+
+        real_import = builtins.__import__
+        imported: list[str] = []
+
+        def spy(name: str, *args: object, **kwargs: object) -> object:
+            imported.append(name)
+            return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(builtins, "__import__", spy)
+        checks.check_connections(None)
+        assert "bastion.connections" in imported
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"corp": dict(GOOD, provider="nope")}, "ADMIN": {"enabled": False}},
+        ROOT_URLCONF="tests.empty_urls",
+    )
+    def test_an_unreachable_connection_is_a_warning(self) -> None:
+        """A typo in a connection nobody is using should not take the site down.
+
+        The admin integration is off and the login routes are not wired, so
+        nothing in this project can reach the entry at all.
+        """
+        assert _ids(checks.check_connections(None)) == {"bastion.W027"}
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"corp": dict(GOOD, provider="nope")}, "ADMIN": {"enabled": False}},
+        ROOT_URLCONF="tests.urls_no_admin",
+    )
+    def test_routed_login_urls_keep_it_an_error(self) -> None:
+        """Turning the admin integration off is not turning SSO off: the entry
+        is still reachable at /sso/login/<name>/."""
+        assert "bastion.E027" in _ids(checks.check_connections(None))
+
     @override_settings(
         BASTION={"CONNECTIONS": {"corp": GOOD}, "ADMIN": {"connection": "typo"}},
     )
     def test_admin_pointing_at_nothing_is_an_error(self) -> None:
         assert "bastion.E028" in _ids(checks.check_connections(None))
+
+    @override_settings(BASTION={"CONNECTIONS": {}, "ADMIN": {"connection": "corp"}})
+    def test_admin_pointing_at_nothing_with_sso_off_is_a_warning(self) -> None:
+        """The state a project is in before its credentials arrive.
+
+        With no connections the admin serves the stock login, so naming one is a
+        statement of intent for the environment that has it rather than a broken
+        pointer in this one. Erroring here is what makes people write ADMIN
+        conditionally.
+        """
+        assert _ids(checks.check_connections(None)) == {"bastion.W028"}
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"corp": GOOD}, "ADMIN": {"enabled": False, "connection": "typo"}}
+    )
+    def test_admin_pointing_at_nothing_while_disabled_is_a_warning(self) -> None:
+        assert _ids(checks.check_connections(None)) == {"bastion.W028"}
 
     @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}, "ADMIN": {"connection": "corp"}})
     def test_admin_pointing_at_a_real_connection_passes(self) -> None:

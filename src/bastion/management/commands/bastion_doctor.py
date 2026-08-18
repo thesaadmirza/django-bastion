@@ -50,6 +50,19 @@ class Command(BaseCommand):
             action="store_true",
             help="Treat warnings as failures.",
         )
+        parser.add_argument(
+            "--base-url",
+            dest="base_url",
+            default=None,
+            metavar="URL",
+            help=(
+                "The scheme and host this deployment is reached on, for example "
+                "https://admin.example.com. Used to print the exact callback URL "
+                "the provider has to have registered. Without it the URL is "
+                "assembled from ALLOWED_HOSTS and the TLS settings, and the "
+                "assumptions are printed with it."
+            ),
+        )
 
     def handle(self, **options: Any) -> None:
         names = options["connections"] or sorted(get_setting("CONNECTIONS"))
@@ -58,7 +71,7 @@ class Command(BaseCommand):
                 'No connections are configured. Add one under BASTION["CONNECTIONS"].'
             )
 
-        reports = [check_project()]
+        reports = [check_project(base_url=options["base_url"])]
         for name in names:
             try:
                 connection = get_connection(name)

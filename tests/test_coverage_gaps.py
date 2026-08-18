@@ -119,9 +119,15 @@ class TestConnectionResolution:
 
 
 @pytest.mark.django_db
-class TestGroupMatchRequirement:
-    """``require_group_match`` turns an authenticated-but-unprivileged login
-    into a refusal with a page that says something useful."""
+class TestPrivilegedUserRequirement:
+    """``require_privileged_user`` turns an authenticated-but-unprivileged login
+    into a refusal with a page that says something useful.
+
+    It reads ``is_staff``/``is_superuser`` and not the group claim, which is why
+    it is no longer called ``require_group_match``: on a provider that publishes
+    no groups the old name made the only control that stops a whole tenant
+    holding a session look inapplicable.
+    """
 
     @pytest.fixture
     def strict_connection(self, idp: FakeIdP, monkeypatch) -> Connection:
@@ -137,7 +143,7 @@ class TestGroupMatchRequirement:
             transport=transport,
             transactions=MemoryTransactionStore(),
             staff_groups=("django-staff",),
-            require_group_match=True,
+            require_privileged_user=True,
         )
         monkeypatch.setattr("bastion.views.get_connection", lambda name=None: built)
         monkeypatch.setattr("bastion.views.get_setting", only_connections)
@@ -187,6 +193,26 @@ class TestGroupMatchRequirement:
         usable session behind."""
         self._login(client, strict_connection, idp, ["unrelated"])
         assert "_auth_user_id" not in client.session
+
+    def test_a_flag_granted_locally_signs_in_without_any_group(
+        self, client: Client, strict_connection: Connection, idp: FakeIdP
+    ) -> None:
+        """The case the old name hid.
+
+        Google publishes no group claim, so anything group-shaped is a dead end
+        there -- and this is still exactly the switch that deployment wants,
+        because the flags can be granted in the admin instead. The refused login
+        below leaves the row that the grant is made on.
+        """
+        from django.contrib.auth import get_user_model
+
+        assert self._login(client, strict_connection, idp, []).status_code == 403
+
+        user = get_user_model()._default_manager.get()
+        user.is_staff = True
+        user.save(update_fields=["is_staff"])
+
+        assert self._login(client, strict_connection, idp, []).status_code == 302
 
 
 # --------------------------------------------------------------------------- #
