@@ -45,6 +45,15 @@ backdoor with paperwork.
 - The path answers only from `ALLOWED_NETWORKS`, when set.
 - Every outcome — success, wrong password, unknown account, wrong network —
   is audited at critical severity and fires the alert sinks.
+- **A refusal is recorded once per address per window, not once per request.**
+  The endpoint is deliberately outside django-axes and answers unauthenticated
+  callers, so a refusal that cost a chained audit write and a synchronous alert
+  every time would be an amplifier: anyone who found the URL could hold workers
+  open with a loop, and a paging sink with a long timeout would hold them
+  longer. Refusals by the network allowlist and by the throttle are each kept to
+  one record and one alert per address per `FAILURE_WINDOW_SECONDS`. **A success
+  is never suppressed** — the one event that must always reach somebody is the
+  one that must never be lost to a flood.
 - The last active account cannot be deleted or revoked.
 - **The account is never locked, only the address.** Five credential failures
   from one address in fifteen minutes and that address is refused; the same

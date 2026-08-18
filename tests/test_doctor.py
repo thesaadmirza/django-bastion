@@ -161,13 +161,30 @@ class TestHonesty:
         )
         assert "Okta" in hint and "Entra" in hint and "Google" in hint
 
+    def test_a_connection_that_can_never_onboard_anybody_warns(
+        self, idp: FakeIdP, transport: FakeTransport
+    ) -> None:
+        """require_privileged_user with no group lists and no row surviving a
+        refusal refuses every first sign-in and leaves nothing to grant on.
+
+        Discovering that during an onboarding is the sort of thing this command
+        exists to prevent.
+        """
+        connection = build(idp, transport)
+        connection.require_privileged_user = True
+        connection.persist_refused_identities = False
+        assert statuses(check_connection(connection).results)["group mapping"] is Status.WARN
+
     def test_mfa_requirement_is_reported_as_unverifiable(
         self, idp: FakeIdP, transport: FakeTransport
     ) -> None:
         report = check_connection(build(idp, transport, require_mfa=True))
         assert statuses(report.results)["MFA requirement"] is Status.UNVERIFIABLE
 
+    @override_settings(SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"))
     def test_the_redirect_uri_is_reported_as_unverifiable(self) -> None:
+        """Even with the scheme resolved, whether it is registered at the
+        provider is not knowable from here."""
         report = check_project()
         assert statuses(report.results)["urls"] is Status.UNVERIFIABLE
 
@@ -176,6 +193,28 @@ class TestHonesty:
         provider outage locks out everyone, including whoever would fix it."""
         report = check_project()
         assert statuses(report.results)["break-glass"] is Status.WARN
+
+    def test_an_empty_network_allowlist_warns(self, settings) -> None:
+        """The same finding as bastion.W032, in the tool an operator actually
+        runs before going live."""
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": ["bastion.breakglass.service.log_only_sink"],
+                "ALLOWED_NETWORKS": [],
+            }
+        }
+        assert statuses(check_project().results)["break-glass network"] is Status.WARN
+
+    def test_a_configured_network_allowlist_passes(self, settings) -> None:
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": ["bastion.breakglass.service.log_only_sink"],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8"],
+            }
+        }
+        assert statuses(check_project().results)["break-glass network"] is Status.OK
 
     def test_alerting_is_reported_as_unverifiable_when_configured(self, settings) -> None:
         """Sinks being listed is not evidence an alert arrives. Only a drill
@@ -241,6 +280,85 @@ class TestProjectChecks:
     @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies")
     def test_signed_cookies_warns(self) -> None:
         assert statuses(check_project().results)["session engine"] is Status.WARN
+
+
+def _urls_result(**kwargs: Any):
+    from bastion.diagnostics import check_project as run
+
+    return next(r for r in run(**kwargs).results if r.name == "urls")
+
+
+class TestCallbackUrl:
+    """The path alone was right and useless.
+
+    A deployment behind a TLS-terminating load balancer without
+    SECURE_PROXY_SSL_HEADER builds ``http://`` redirect URIs while the
+    ``https://`` one is registered at the provider. Every sign-in fails with
+    redirect_uri_mismatch and nothing in the output points at it, because the
+    path in the output is correct. The scheme is knowable here, so it is shown.
+    """
+
+    @override_settings(ALLOWED_HOSTS=["api.example.com"], SECURE_PROXY_SSL_HEADER=None)
+    def test_the_absolute_url_is_printed(self) -> None:
+        assert _urls_result().detail == "Callback URL is http://api.example.com/sso/callback/"
+
+    @override_settings(ALLOWED_HOSTS=["api.example.com"], SECURE_PROXY_SSL_HEADER=None)
+    def test_plain_http_warns(self) -> None:
+        result = _urls_result()
+        assert result.status is Status.WARN
+        assert "SECURE_PROXY_SSL_HEADER" in (result.hint or "")
+
+    @override_settings(
+        ALLOWED_HOSTS=["api.example.com"],
+        SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+    )
+    def test_a_proxy_header_gives_https_and_names_its_assumption(self) -> None:
+        result = _urls_result()
+        assert result.detail == "Callback URL is https://api.example.com/sso/callback/"
+        # The wire form, which is what a proxy is configured with.
+        assert "X-Forwarded-Proto: https" in (result.hint or "")
+
+    @override_settings(
+        ALLOWED_HOSTS=["api.example.com"],
+        SECURE_PROXY_SSL_HEADER=None,
+        SECURE_SSL_REDIRECT=True,
+    )
+    def test_ssl_redirect_gives_https_and_names_the_loop_it_assumes_away(self) -> None:
+        result = _urls_result()
+        assert result.detail.startswith("Callback URL is https://")
+        assert "loops" in (result.hint or "")
+
+    @override_settings(ALLOWED_HOSTS=[], DEBUG=True)
+    def test_debug_uses_djangos_own_localhost_default(self) -> None:
+        assert "//localhost:8000/" in _urls_result().detail
+
+    @override_settings(ALLOWED_HOSTS=["*"], DEBUG=False)
+    def test_a_wildcard_host_falls_back_to_the_path(self) -> None:
+        """Better to say what cannot be built than to invent a host."""
+        result = _urls_result()
+        assert result.detail == "Callback path is /sso/callback/"
+        assert "--base-url" in (result.hint or "")
+
+    @override_settings(ALLOWED_HOSTS=["a.example.com", "b.example.com"])
+    def test_more_than_one_host_is_stated(self) -> None:
+        assert "2 entries in ALLOWED_HOSTS" in _urls_result().detail
+
+    @override_settings(ALLOWED_HOSTS=[".example.com"])
+    def test_a_subdomain_pattern_shows_the_bare_domain(self) -> None:
+        assert "//example.com/" in _urls_result().detail
+
+    @override_settings(ALLOWED_HOSTS=["api.example.com"], SECURE_PROXY_SSL_HEADER=None)
+    def test_base_url_wins_over_every_inference(self) -> None:
+        result = _urls_result(base_url="https://admin.example.com")
+        assert result.detail == "Callback URL is https://admin.example.com/sso/callback/"
+        assert result.status is Status.UNVERIFIABLE
+
+    @override_settings(
+        ALLOWED_HOSTS=["api.example.com"],
+        SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+    )
+    def test_a_plain_http_base_url_still_warns(self) -> None:
+        assert _urls_result(base_url="http://admin.example.com").status is Status.WARN
 
 
 class TestCommand:

@@ -384,9 +384,7 @@ INERT_SETTINGS = {
     "MAPPING": "the dict itself is never resolved; its keys arrive with the rule engine",
     "MAPPING.STRICT": "arrives with the rule engine, v0.2",
     "MAPPING.MANAGED_GROUPS": "arrives with the rule engine, v0.2",
-    "IDENTITY.LINKING_POLICY": "verified_email_once is not built",
     "ADMIN.reauth_max_age": "step-up re-authentication is not built",
-    "ADMIN.local_login": "break-glass is configured under BREAK_GLASS instead",
 }
 
 
@@ -455,3 +453,21 @@ def test_the_inert_list_names_only_settings_that_exist() -> None:
     declared = set(_setting_names())
     stale = sorted(set(INERT_SETTINGS) - declared)
     assert not stale, f"INERT_SETTINGS names settings that no longer exist: {stale}"
+
+
+def test_the_inert_list_does_not_name_settings_that_are_read() -> None:
+    """The other direction, and the one that goes wrong quietly.
+
+    A setting implemented while its entry stays behind leaves the list saying a
+    control does nothing when it now does. That is the same defect as the entry
+    being missing, read backwards: both are the honest-unfinished-feature marker
+    telling the reader something untrue. ``IDENTITY["LINKING_POLICY"]`` and
+    ``ADMIN["local_login"]`` were both implemented in one change, and only this
+    catches the leftovers.
+    """
+    accessed = _accessed_keys()
+    live = sorted(name for name in INERT_SETTINGS if name.split(".")[-1] in accessed)
+    assert not live, (
+        f"INERT_SETTINGS still lists settings the source reads: {live}. "
+        "Remove the entry: the feature landed."
+    )

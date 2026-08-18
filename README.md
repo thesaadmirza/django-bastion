@@ -87,6 +87,13 @@ engine with a serializable condition tree is the 0.2 design and is not built yet
 [the roadmap](docs/explanation/roadmap.md) says what it will look like and which two approaches were
 already rejected.
 
+**An answer for the admins you already have.** Keying accounts on `(issuer, subject)` and never on
+email is the right default and it strands every existing administrator behind a second account on their
+first sign-in. `LINKING_POLICY = "verified_email_once"` adopts the local account instead — once, only on
+an address the provider says is verified, only from a domain you pin, only where exactly one local
+account holds it and has no federated identity yet, and never onto a break-glass account. After that it
+pins to the subject like everything else. Both the adoption and every refusal to adopt are audited.
+
 **Break-glass you can actually rely on.** Creating one requires a written reason. Using one alerts a
 channel that does not depend on the identity provider, which matters because the outage that sends you
 here may be the provider itself. Both outcomes are recorded at critical severity, so a failed attempt is

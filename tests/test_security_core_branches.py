@@ -309,3 +309,26 @@ class TestNetworkParsing:
         with pytest.raises(BreakGlassDenied) as caught:
             authenticate_break_glass(username="x", password="y", request=request)
         assert caught.value.reason == "network"
+
+    def test_an_unparseable_address_still_leaves_a_record(self, rf) -> None:
+        """It is stored with no address rather than not stored at all.
+
+        ``source_ip`` is ``inet`` on PostgreSQL and Django adapts the value
+        through ``ipaddress.ip_address`` for writes *and* lookups, so a value
+        that is not an address raises on the way to the driver. On the write
+        path the recorder's "a sink must never fail a login" catch swallows
+        that, and the entire record disappears -- silently, and only on one
+        backend. Normalising it to NULL at the single place the address is
+        resolved keeps the evidence and keeps every lookup that compares
+        against it working.
+        """
+        from bastion.audit.models import AuditEvent
+        from bastion.breakglass.service import BreakGlassDenied, authenticate_break_glass
+
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(
+                username="x", password="y", request=rf.post("/", REMOTE_ADDR="not-an-address")
+            )
+
+        record = AuditEvent.objects.get(reason="network")
+        assert record.source_ip is None
