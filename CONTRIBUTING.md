@@ -2,22 +2,36 @@
 
 ## Licence and provenance
 
+**Sign off every commit.**
+
+```bash
+git commit -s
+```
+
+That adds a `Signed-off-by` trailer certifying you have the right to submit the
+work under the project's licence. It is the
+[Developer Certificate of Origin](https://developercertificate.org/) — a
+statement about where the code came from, not a copyright assignment, and it
+costs you one flag.
+
+**CI checks it**, on every commit a pull request adds, against that commit's own
+author: a sign-off in somebody else's name certifies nothing, so the trailer has
+to match. If you forgot on work already written, `git rebase --signoff <base>`
+and force-push. Merge commits are skipped, because GitHub writes those and they
+are nobody's certification.
+
+The check arrived long after the requirement did. This page asked for the
+trailer while nothing verified it, and no commit from before the check exists
+carries one — an unenforced rule is the failure mode this codebase keeps writing
+tests about, so it is now enforced rather than asserted. History is not being
+rewritten to pretend otherwise; the job only looks at what a pull request adds.
+
 **No CLA.** A contributor licence agreement on a security package reads as "we
 are reserving the right to relicense," which is the doubt this project can least
 afford, and it puts a signup wall in front of drive-by security fixes — the
-contributions we most want.
-
-**No DCO sign-off either, today.** This page used to open by saying every commit
-needed `git commit -s`. Nothing has ever checked that, and no commit in the
-history carries the trailer, so it was a requirement in name only — the same
-defect this codebase spends its comments warning about, which is a control that
-reads as present and enforces nothing. Contributions are taken under the
-[Apache-2.0 licence](LICENSE) in this repository, whose section 5 covers the
-submission of contributions.
-
-If that changes, it changes here and in CI in the same commit. A provenance
-requirement nobody verifies is worse than not asking, because it produces a
-record that looks like certification and is not.
+contributions we most want. The DCO gets the provenance assurance without the
+signup wall or the relicensing question, which is why it is the one and not the
+other.
 
 ## Setup
 
@@ -84,6 +98,9 @@ edited the changelog directly.
 
 ## Things CI will reject
 
+- **A commit without a `Signed-off-by` trailer matching its author.** See
+  [Licence and provenance](#licence-and-provenance) above; the fix is
+  `git commit -s`, or `git rebase --signoff <base>` for commits already written.
 - **`assert` anywhere in `src/`.** It vanishes under `python -O`, and a runtime
   invariant guarded by one is not guarded. The check is a grep for `^\s*assert `.
 - **`verify=False`, `insecure=True`, `check_hostname=False`, or `# nosec` in

@@ -21,6 +21,64 @@ env:
 # .github/renovate.json5) bumps the SHA and the comment together.
 
 jobs:
+  dco:
+    # Every commit in a pull request carries a Developer Certificate of Origin
+    # sign-off from its own author. CONTRIBUTING asked for this for a long time
+    # and nothing checked it, which is the failure mode this repository keeps
+    # writing tests about: a control that reads as present and enforces nothing.
+    #
+    # Done with git rather than a third-party action on purpose. The whole check
+    # is fifteen lines of shell, and a supply-chain dependency in the CI of a
+    # security package should have to earn its place.
+    #
+    # Only on pull requests: a push to main has no base to diff against, and the
+    # history predating this job is unsigned and stays that way. Nothing is
+    # certified retroactively.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The whole range has to be present to walk it.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Every commit is signed off by its author
+        shell: bash
+        # Through the environment, never interpolated into the script: a ref
+        # name is attacker-controlled on a fork PR, and zizmor rejects the
+        # template-injection shape.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Merge commits are GitHub's, not a contributor's certification, so
+          # they are excluded. Everything else has to carry a Signed-off-by
+          # trailer whose value is that commit's own author -- a sign-off in
+          # somebody else's name certifies nothing.
+          missing=0
+          while read -r sha; do
+            author="$(git show -s --format='%an <%ae>' "$sha")"
+            if git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha" |
+              grep -qixF "$author"; then
+              continue
+            fi
+            echo "::error::${sha} is not signed off by its author, ${author}"
+            git show -s --format='  %h %s' "$sha"
+            missing=$((missing + 1))
+          done < <(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}")
+
+          if [ "$missing" -ne 0 ]; then
+            echo
+            echo "${missing} commit(s) need a Signed-off-by trailer matching the author."
+            echo "Add it to new commits with 'git commit -s', or to the ones already"
+            echo "written with 'git rebase --signoff ${BASE_SHA}' and a force-push."
+            echo "See CONTRIBUTING.md and https://developercertificate.org/."
+            exit 1
+          fi
+          echo "Every commit in ${BASE_SHA}..${HEAD_SHA} is signed off."
+
   lint:
     runs-on: ubuntu-latest
     permissions:
