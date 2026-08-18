@@ -170,6 +170,21 @@ dropping it is the one outcome worse than a failed boot.
 - `test_docs.py` gains the other half of the inert-settings guard: an entry that
   stays behind after the feature lands makes the list say a control does nothing
   when it now does, and only a test in that direction catches it.
+- **`CONTRIBUTING.md` describes the project as it is.** It asked every commit for
+  a DCO sign-off that nothing has ever checked and no commit in the history
+  carries, and it asked for changelog fragments in a `changes/` directory that
+  has never existed — a contributing guide is the one document whose readers
+  cannot tell the difference between a rule and a wish. It now states the
+  provenance position plainly, points at the changelog section releases actually
+  use, and lists the gates CI really applies: the coverage floors, the
+  cross-database matrix, the documentation tests, and the exact greps, including
+  the `strict=False` that was removed from the insecure-flag list and the
+  `# nosec` and `check_hostname=False` that were added to it. `pyright` is named
+  as advisory, which is what `continue-on-error` in the workflow makes it.
+- The link checker in `test_docs.py` now covers `CONTRIBUTING.md` and
+  `CODE_OF_CONDUCT.md`. They were the only markdown in the repository nothing
+  checked, which is how an instruction to write files into a directory that does
+  not exist survived as long as it did.
 
 ## [0.0.1a7] - 2026-08-11
 
