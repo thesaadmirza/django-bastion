@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 #: is also the reason excluded when counting, and those two uses must not drift.
 _THROTTLED = "throttled"
 
+#: Reason recorded when an attempt is refused by the network allowlist. Named
+#: for the same reason as the one above: it is written by the recorder and read
+#: back by the deduplication that keeps the refusal to one record per window.
+_NETWORK = "network"
+
 #: Value written to the audit record's auth_protocol, and matched on when
 #: counting. Same reason for naming it.
 _PROTOCOL = "break_glass"
@@ -91,21 +96,32 @@ def _is_throttled(client_ip: str) -> bool:
     return seen >= limit
 
 
-def _already_refused(client_ip: str) -> bool:
-    """Whether this address has been refused already inside the window.
+def _already_refused(client_ip: str | None, reason: str) -> bool:
+    """Whether this address has been refused for this reason inside the window.
 
-    Takes a plain ``str``: this only runs after ``_is_throttled`` returned
-    true, which cannot happen without an address.
+    Used to record a refusal once rather than once per attempt. Recording each
+    one is what makes a gate worse than no gate: every refusal would append a
+    chained audit row, which takes ``SELECT FOR UPDATE`` on the chain head and
+    serialises against every other audit write in the system, and would fire
+    the alert sinks synchronously. A flood then costs more the longer it runs,
+    and the growing rows are scanned by the next attempt.
 
-    Used to record the refusal once rather than once per attempt. Recording
-    each one is what makes a throttle worse than no throttle: every refusal
-    would append a chained audit row, which serialises on the chain head
-    against every other audit write in the system, and fire the alert sinks
-    synchronously. A flood would then cost more the longer it ran, and the
-    growing rows would be scanned by the next attempt.
+    This guarded the throttle from the start and did not guard the network
+    denial above it, which was the branch that actually mattered: the throttle
+    only refuses an address that has already spent five credential failures,
+    while the network gate refuses every request from every address outside the
+    allowlist -- and the endpoint is ``login_not_required`` and deliberately
+    outside django-axes, so anybody who finds the URL can produce those in a
+    loop. One chained write and one synchronous alert per request is an
+    amplifier, and a sink that reaches a paging API on a sixty-second timeout
+    turns it into a way to hold workers open.
 
-    One record per address per window keeps the evidence and drops the
-    amplification.
+    Keyed per reason so that a network refusal and a throttle refusal do not
+    suppress each other: they are different findings and an investigation wants
+    both. ``None`` is a real bucket rather than a skip -- a request with no
+    ``REMOTE_ADDR`` is refused by the network gate whenever an allowlist exists,
+    and those requests are indistinguishable from each other anyway, so they
+    share one record per window.
     """
     from bastion.audit.models import AuditEvent
 
@@ -113,12 +129,24 @@ def _already_refused(client_ip: str) -> bool:
         event_type=Event.PROTOCOL_FALLBACK,
         occurred_at__gte=_window_start(),
         auth_protocol=_PROTOCOL,
+        # Django turns an ``=None`` lookup into IS NULL, which is what the
+        # recorder writes for a request with no address.
         source_ip=client_ip,
-        reason=_THROTTLED,
+        reason=reason,
     ).exists()
 
 
 def _network_allows(client_ip: str | None) -> bool:
+    """Whether the allowlist admits this address.
+
+    Parses the address itself rather than trusting the caller to have done it.
+    ``authenticate_break_glass`` resolves the address through
+    ``client_address``, which now returns ``None`` for anything that is not one,
+    so in that path the ``ValueError`` below is unreachable -- but this is the
+    function that decides whether an unauthenticated caller is answered, and it
+    is one refactor away from being handed a raw header value. Failing closed on
+    a string it cannot parse costs a try block.
+    """
     networks = _config().get("ALLOWED_NETWORKS", [])
     if not networks:
         # Empty means unrestricted, and that is a deliberate configuration the
@@ -130,7 +158,26 @@ def _network_allows(client_ip: str | None) -> bool:
         address = ipaddress.ip_address(client_ip)
     except ValueError:
         return False
-    return any(address in ipaddress.ip_network(net, strict=False) for net in networks)
+
+    for net in networks:
+        try:
+            network = ipaddress.ip_network(str(net), strict=False)
+        except ValueError:
+            # ``bastion.E102`` refuses this at startup, so reaching it means the
+            # check was silenced or the setting was changed underneath a running
+            # process. Skipping the entry keeps an unauthenticated request from
+            # raising out of the gate that is deciding whether to answer it; the
+            # effect is that a malformed CIDR grants nothing, which is the
+            # direction to fail in.
+            logger.error(
+                "Ignoring unusable entry %r in BREAK_GLASS ALLOWED_NETWORKS; "
+                "it matches nothing. Fix it: bastion.E102 reports this at startup.",
+                net,
+            )
+            continue
+        if address in network:
+            return True
+    return False
 
 
 def authenticate_break_glass(*, username: str, password: str, request: Any = None) -> Any:
@@ -158,8 +205,12 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
     # REMOTE_ADDR silently matched nothing.
     client_ip = client_address(request) if request else None
     if not _network_allows(client_ip):
-        _record(None, Outcome.DENIED, "network", request)
-        raise BreakGlassDenied("network")
+        # Deduplicated exactly as the throttle below is. Every refusal here
+        # would otherwise cost a chained audit write and a synchronous alert,
+        # on the one endpoint an unauthenticated caller can reach at will.
+        if not _already_refused(client_ip, _NETWORK):
+            _record(None, Outcome.DENIED, _NETWORK, request)
+        raise BreakGlassDenied(_NETWORK)
 
     # Before the password work, so that a flood costs the attacker a query and
     # not a KDF round each time.
@@ -173,7 +224,7 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
     # No address means nothing to key on, so nothing to throttle. Refusing an
     # addressless request is the network allowlist's job, above.
     if client_ip and _is_throttled(client_ip):
-        if not _already_refused(client_ip):
+        if not _already_refused(client_ip, _THROTTLED):
             _record(None, Outcome.DENIED, _THROTTLED, request)
         raise BreakGlassDenied(_THROTTLED)
 

@@ -202,7 +202,7 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
         )
         return _failure(request, reference, status=403)
 
-    if resolved.require_group_match and not _has_any_privilege(user, resolved):
+    if resolved.require_privileged_user and not _has_any_privilege(user):
         # Post-authentication. Identity is proven, so there is no enumeration
         # risk and the page can say something useful.
         emit(
@@ -215,7 +215,7 @@ def callback(request: HttpRequest, connection: str | None = None) -> HttpRespons
             issuer=result.identity.issuer,
             subject=result.identity.subject,
             correlation_id=reference,
-            context={"reason": "no configured group matched"},
+            context={"reason": "authenticated but neither staff nor superuser"},
         )
         return _denied(request, user, resolved, reference)
 
@@ -324,7 +324,18 @@ def logout(request: HttpRequest) -> HttpResponse:
     return response
 
 
-def _has_any_privilege(user: AbstractBaseUser, connection: Connection) -> bool:
+def _has_any_privilege(user: AbstractBaseUser) -> bool:
+    """What ``require_privileged_user`` actually tests.
+
+    ``is_staff`` or ``is_superuser``, never the group claim. Usually the flags
+    got there from a group, which is why the setting was once called
+    ``require_group_match``; but a provider that publishes no groups at all --
+    Google -- can still have privileged accounts, granted in the admin or by a
+    management command, and the switch works there. That case is the one the
+    old name hid, and it is the case where it matters most: without it every
+    account in the tenant authenticates, holds a Django session, and is only
+    stopped at the admin door.
+    """
     return bool(getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
 
 

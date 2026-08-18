@@ -128,6 +128,20 @@ def _config_checks(connection: Connection) -> Iterator[Result]:
                 "in once and read the audit record before relying on this."
             ),
         )
+    elif connection.require_privileged_user and not connection.persist_refused_identities:
+        yield Result(
+            "group mapping",
+            Status.WARN,
+            "No staff_groups or superuser_groups, but this connection requires a "
+            "privileged user and does not persist refused identities.",
+            hint=(
+                "Nothing can grant a flag from the claims, and no row survives a "
+                "refusal to grant one on afterwards, so every first sign-in is "
+                "refused and there is no way out of it through this connection. "
+                "Configure the group lists, or set persist_refused_identities "
+                "back to True and grant the first account in the admin."
+            ),
+        )
     else:
         yield Result(
             "group mapping",
@@ -320,14 +334,163 @@ def _clock_check(connection: Connection, metadata: Any) -> Iterator[Result]:
         yield Result("clock skew", Status.OK, f"{skew.total_seconds():.0f}s.")
 
 
-def check_project() -> Report:
-    """Checks that are about the project rather than one connection."""
+#: Where the scheme in the callback URL came from, and what it depends on.
+#: Printing the URL without this would trade one silent assumption for another.
+_SCHEME_CAVEAT = {
+    "proxy-header": (
+        "Assumes your proxy actually sets {header}: {value}, which is what "
+        "SECURE_PROXY_SSL_HEADER tells Django to read the scheme from. If the "
+        "proxy does not set it, Django builds this as http:// instead and the "
+        "provider rejects the sign-in with redirect_uri_mismatch."
+    ),
+    "ssl-redirect": (
+        "Assumes TLS terminates in this process, since SECURE_SSL_REDIRECT is "
+        "on and SECURE_PROXY_SSL_HEADER is not set. If TLS terminates at a "
+        "proxy instead, Django sees every request as insecure: it redirects to "
+        "https, the proxy forwards as http again, and the browser loops. Set "
+        "SECURE_PROXY_SSL_HEADER."
+    ),
+    "plain": (
+        "This is http://, not https://, and most providers refuse to register "
+        "or redirect to a plain-http URI outside localhost. Nothing in settings "
+        "says otherwise: SECURE_PROXY_SSL_HEADER is unset, so if TLS terminates "
+        "at a load balancer Django believes every request is insecure and builds "
+        "exactly this. That is the whole of the redirect_uri_mismatch class of "
+        "failure, and it looks identical to a typo at the provider."
+    ),
+}
+
+
+def _callback_url_result(path: str, base_url: str | None) -> Result:
+    """The absolute callback URL, or the closest thing that can be derived.
+
+    The path alone was what this reported, with the caveats in prose
+    underneath, and prose is easy to read past when the line above it looks
+    correct. A deployment behind a TLS-terminating load balancer without
+    ``SECURE_PROXY_SSL_HEADER`` builds ``http://`` redirect URIs while the
+    ``https://`` one is registered at the provider, and every sign-in fails
+    with ``redirect_uri_mismatch`` -- with nothing in the output pointing at
+    it, because the path was right.
+
+    The scheme is knowable at check time. So it is shown, along with what its
+    value depends on, and a plain-http result warns rather than passing.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    if base_url:
+        split = urlsplit(base_url)
+        url = urlunsplit((split.scheme or "https", split.netloc or split.path, path, "", ""))
+        secure = url.startswith("https://")
+        return Result(
+            "urls",
+            Status.UNVERIFIABLE if secure else Status.WARN,
+            f"Callback URL is {url}",
+            hint=(
+                "Register this exact string at the provider: scheme, host, port "
+                "and trailing slash all have to match. It was assembled from "
+                "--base-url, so it is what you say the deployment is reached "
+                "on rather than what this process can prove."
+            )
+            if secure
+            else _SCHEME_CAVEAT["plain"],
+        )
+
+    host, extra_hosts = _deployment_host()
+    if host is None:
+        return Result(
+            "urls",
+            Status.UNVERIFIABLE,
+            f"Callback path is {path}",
+            hint=(
+                "The absolute URL cannot be assembled here: ALLOWED_HOSTS names "
+                "no concrete host. Re-run with --base-url https://your.host to "
+                "see the exact string the provider has to have registered, "
+                "including the scheme, which is where this usually goes wrong."
+            ),
+        )
+
+    scheme, origin = _inferred_scheme()
+    url = f"{scheme}://{host}{path}"
+    detail = f"Callback URL is {url}"
+    if extra_hosts:
+        detail += f" (first of {extra_hosts + 1} entries in ALLOWED_HOSTS)"
+
+    return Result(
+        "urls",
+        Status.WARN if scheme == "http" else Status.UNVERIFIABLE,
+        detail,
+        hint=_SCHEME_CAVEAT[origin].format(**_proxy_header_parts())
+        + " Whether it is registered at the provider still cannot be checked "
+        "from here, and it must match exactly, trailing slash included.",
+    )
+
+
+def _deployment_host() -> tuple[str | None, int]:
+    """The host to build the callback URL on, and how many others there were.
+
+    ``ALLOWED_HOSTS`` is the only place a Django project states the names it
+    answers to. Wildcards are skipped because they name nothing; a leading dot
+    is a subdomain pattern, and the bare domain it also matches is the sensible
+    thing to show. ``DEBUG`` with an empty list is Django's localhost default.
+    """
+    from django.conf import settings
+
+    hosts = [str(h) for h in getattr(settings, "ALLOWED_HOSTS", [])]
+    usable = [h.lstrip(".") for h in hosts if h and h != "*"]
+    if usable:
+        return usable[0], len(usable) - 1
+    if not hosts and getattr(settings, "DEBUG", False):
+        return "localhost:8000", 0
+    return None, 0
+
+
+def _proxy_header_parts() -> dict[str, str]:
+    """``SECURE_PROXY_SSL_HEADER`` as a proxy is configured with it.
+
+    The setting holds the WSGI ``META`` key, ``HTTP_X_FORWARDED_PROTO``. The
+    person who has to check the proxy is looking for ``X-Forwarded-Proto``, so
+    that is what gets printed.
+    """
+    from django.conf import settings
+
+    configured = list(getattr(settings, "SECURE_PROXY_SSL_HEADER", None) or ())
+    header = str(configured[0]) if configured else ""
+    value = str(configured[1]) if len(configured) > 1 else ""
+    wire = header.removeprefix("HTTP_").replace("_", "-").title()
+    return {"header": wire or "the configured header", "value": value or "the configured value"}
+
+
+def _inferred_scheme() -> tuple[str, str]:
+    """What scheme ``request.build_absolute_uri`` would produce, and why.
+
+    Django decides this per request from ``wsgi.url_scheme`` or from
+    ``SECURE_PROXY_SSL_HEADER``, so no answer here is certain. Every branch
+    returns the assumption it made along with the scheme, and the caller prints
+    it: an unqualified guess about the scheme is what this check exists to stop
+    producing.
+    """
+    from django.conf import settings
+
+    if getattr(settings, "SECURE_PROXY_SSL_HEADER", None):
+        return "https", "proxy-header"
+    if getattr(settings, "SECURE_SSL_REDIRECT", False):
+        return "https", "ssl-redirect"
+    return "http", "plain"
+
+
+def check_project(*, base_url: str | None = None) -> Report:
+    """Checks that are about the project rather than one connection.
+
+    ``base_url`` is the scheme and host the deployment is actually reached on,
+    when the operator knows it. Without one the callback URL is assembled from
+    settings and labelled with the assumptions that went into it.
+    """
     report = Report(connection=None)
-    report.results.extend(_project_checks())
+    report.results.extend(_project_checks(base_url=base_url))
     return report
 
 
-def _project_checks() -> Iterator[Result]:
+def _project_checks(*, base_url: str | None = None) -> Iterator[Result]:
     from django.conf import settings
     from django.urls import NoReverseMatch, reverse
 
@@ -341,17 +504,7 @@ def _project_checks() -> Iterator[Result]:
             hint='Add path("sso/", include("bastion.urls")) to urlpatterns.',
         )
     else:
-        yield Result(
-            "urls",
-            Status.UNVERIFIABLE,
-            f"Callback path is {path}",
-            hint=(
-                "Whether the absolute form of this is registered at the provider "
-                "cannot be checked from here. It must match exactly, including "
-                "scheme, host, port and trailing slash. Behind a proxy it also "
-                "depends on SECURE_PROXY_SSL_HEADER being correct."
-            ),
-        )
+        yield _callback_url_result(path, base_url)
 
     engine = getattr(settings, "SESSION_ENGINE", "")
     if engine.endswith("signed_cookies"):
@@ -415,6 +568,24 @@ def _break_glass_checks() -> Iterator[Result]:
                 "not depend on the identity provider, is only established by "
                 "running a drill. Use bastion_breakglass drill."
             ),
+        )
+
+    if not config.get("ALLOWED_NETWORKS"):
+        yield Result(
+            "break-glass network",
+            Status.WARN,
+            "ALLOWED_NETWORKS is empty, so the emergency login answers anywhere.",
+            hint=(
+                "The same finding as bastion.W032 at startup. Restricting it is "
+                "a real trade -- an allowlist your office is in is one the hotel "
+                "you are in at 3am is not -- so this warns rather than fails."
+            ),
+        )
+    else:
+        yield Result(
+            "break-glass network",
+            Status.OK,
+            f"{_plural(len(config['ALLOWED_NETWORKS']), 'network')} allowed.",
         )
 
     active = BreakGlassAccount.objects.active().count()

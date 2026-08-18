@@ -31,10 +31,15 @@ python manage.py bastion_doctor
 - [ ] **automated** The provider advertises `S256`.
 - [ ] **automated** At least one signing algorithm the package accepts. Symmetric
       algorithms are refused; a provider offering only `HS256` fails every login.
-- [ ] The redirect URI registered at the provider matches
-      `bastion_doctor`'s reported callback path **exactly** — scheme, host, port
-      and trailing slash. More first logins fail on this than on everything else
-      combined, and nothing can verify it from here.
+- [ ] The redirect URI registered at the provider matches the callback **URL**
+      `bastion_doctor` prints — scheme, host, port and trailing slash. More
+      first logins fail on this than on everything else combined, and nothing
+      can verify it from here. Run it with `--base-url https://your.host` to
+      compare exact strings rather than assembled ones.
+- [ ] That URL is `https://`. If the doctor prints `http://`, TLS terminates at
+      a proxy and `SECURE_PROXY_SSL_HEADER` is not set, so Django builds a
+      plain-http redirect URI while the `https://` one is registered — every
+      sign-in then fails with `redirect_uri_mismatch` and nothing points at why.
 - [ ] More than one signing key is published, or you accept a brief outage at
       each rotation.
 - [ ] Clock skew against the provider is under a few seconds. Skew produces the
@@ -81,8 +86,11 @@ python manage.py bastion_doctor
 - [ ] Alerts arrive through a channel that does **not** depend on the identity
       provider. If they route through an SSO-protected inbox, the outage that
       triggers break-glass also silences the alarm.
-- [ ] `ALLOWED_NETWORKS` set, or you have decided the endpoint should be
-      reachable from anywhere.
+- [ ] **automated** `ALLOWED_NETWORKS` set, or you have decided the endpoint
+      should be reachable from anywhere. `bastion.W032` warns rather than
+      refuses, because an allowlist your office is in is one the hotel you are
+      in at 3am is not — the decision has to be yours. Entries that are not
+      networks are refused outright by `bastion.E102`.
 - [ ] Credentials stored where the runbook says, in custody split between people.
 - [ ] A drill has been run: `manage.py bastion_breakglass drill --user <name>`.
 
