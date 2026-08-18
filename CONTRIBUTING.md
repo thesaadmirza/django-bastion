@@ -1,40 +1,65 @@
 # Contributing
 
-## Sign-off
+## Licence and provenance
 
-Every commit needs a DCO sign-off:
+**No CLA.** A contributor licence agreement on a security package reads as "we
+are reserving the right to relicense," which is the doubt this project can least
+afford, and it puts a signup wall in front of drive-by security fixes — the
+contributions we most want.
 
-```bash
-git commit -s -m "your message"
-```
+**No DCO sign-off either, today.** This page used to open by saying every commit
+needed `git commit -s`. Nothing has ever checked that, and no commit in the
+history carries the trailer, so it was a requirement in name only — the same
+defect this codebase spends its comments warning about, which is a control that
+reads as present and enforces nothing. Contributions are taken under the
+[Apache-2.0 licence](LICENSE) in this repository, whose section 5 covers the
+submission of contributions.
 
-That adds a `Signed-off-by` line certifying you have the right to submit the
-work under the project's licence. See [developercertificate.org](https://developercertificate.org/).
-
-There is no CLA. A contributor licence agreement on a security package reads as
-"we are reserving the right to relicense," which is the doubt this project can
-least afford, and it puts a signup wall in front of drive-by security fixes —
-the contributions we most want.
+If that changes, it changes here and in CI in the same commit. A provenance
+requirement nobody verifies is worse than not asking, because it produces a
+record that looks like certification and is not.
 
 ## Setup
 
+`uv` is what CI runs and `uv.lock` is committed, so it is the reproducible path:
+
+```bash
+uv sync
+uv run pytest
+```
+
+pip works as well, on 25.1 or newer for `--group`:
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[oidc]" --group dev
+pip install -e . --group dev
 pytest
 ```
+
+Two notes on the optional extras, neither of which the test suite needs:
+`[ldap]` pulls in python-ldap, which builds from source and wants OpenLDAP
+headers (`libldap2-dev` and `libsasl2-dev` on Debian), and `[saml]` pulls in
+pysaml2, which wants xmlsec. `uv sync` without extras avoids both. `[oidc]` is
+empty on purpose — OIDC support is in the base install.
 
 ## Before opening a pull request
 
 ```bash
-ruff check --fix src tests
-ruff format src tests
-mypy src
-pytest
-python -m django makemigrations --check --dry-run --settings tests.settings
+uv run ruff check --fix src tests noxfile.py
+uv run ruff format src tests noxfile.py
+uv run mypy src
+uv run pytest
+uv run python -m django makemigrations --check --dry-run --settings tests.settings
 ```
 
-Or `nox`, which runs the matrix.
+`noxfile.py` is in the lint paths because CI lints it too, and a file the
+formatter skips locally but checks in CI is a failure you find after pushing.
+
+Or `nox`, which runs the whole matrix. `nox -s lint typecheck migrations` is the
+quick subset. The cross-database sessions need a server already running —
+`nox -s "tests_db(database='postgres')"` expects one on 127.0.0.1:5432 with the
+credentials in `tests/settings.py`; CI starts containers for PostgreSQL, MySQL
+and MariaDB.
 
 ## What a change needs
 
@@ -46,16 +71,56 @@ property, not the implementation.
 heavily on this. A lot of what looks arbitrary is a specific vendor behaviour or
 a specific CVE, and a reader six months from now needs to know which.
 
-**A changelog fragment** in `changes/`, named `<issue>.<type>.md` where type is
-one of `feature`, `bugfix`, `security`, `removal`, `deprecation`.
+**A changelog entry** under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md),
+in whichever [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) heading
+fits — `Added`, `Changed`, `Fixed`, `Security`, `Removed`, `Deprecated`. Write
+what changed for someone upgrading, not what you did. Entries here are prose
+rather than one-liners, because the interesting part of a fix in this package is
+usually why the old behaviour looked correct.
+
+There is no `changes/` directory and no towncrier. An earlier version of this
+page asked for fragments in one; it never existed, and every release so far has
+edited the changelog directly.
 
 ## Things CI will reject
 
-- `assert` anywhere in `src/`. It vanishes under `python -O`, and a runtime
-  invariant guarded by one is not guarded.
-- `verify=False`, `insecure=True`, `strict=False` outside the test tree.
-- Anything that fails `ruff format --check`.
-- A missing migration.
+- **`assert` anywhere in `src/`.** It vanishes under `python -O`, and a runtime
+  invariant guarded by one is not guarded. The check is a grep for `^\s*assert `.
+- **`verify=False`, `insecure=True`, `check_hostname=False`, or `# nosec` in
+  `src/`.** `strict=False` is deliberately *not* on that list: the only use in
+  the tree is `ipaddress.ip_network(net, strict=False)`, which permits host bits
+  in a CIDR and disables no checking at all. A guard that cries wolf on correct
+  code gets switched off.
+- **Anything that fails `ruff check` or `ruff format --check`** over `src`,
+  `tests` and `noxfile.py`.
+- **A missing migration.**
+- **Coverage below 95% overall, or below 100% for the security core** —
+  `bastion.claims`, `bastion.protocols`, `bastion.audit` and
+  `bastion.breakglass`. If a branch there cannot be reached by a test, that is
+  worth saying out loud in review rather than routing around.
+- **A failure on any supported database.** The suite runs against SQLite,
+  PostgreSQL, MySQL and MariaDB, and nothing is xfailed. Backend-specific
+  failures are real: `source_ip` is `inet` on PostgreSQL and adapts values that
+  the other three store without complaint.
+- **A failure on any supported interpreter or Django version.** Python 3.11
+  through 3.14, Django 5.2 through 6.1. The 3.11 × 6.0 and 3.11 × 6.1 cells are
+  excluded because Django 6.0 requires 3.12, not because they are allowed to
+  fail.
+- **The documentation tests in `tests/test_docs.py`.** They fail on a setting in
+  `conf.DEFAULTS` that the settings reference does not document, a check id in
+  `checks.py` missing from the table in that reference (or listed there and no
+  longer emitted), an `INERT_SETTINGS` entry that is now read or a read setting
+  that is not listed, a relative link to a file that does not exist, and a
+  version string in prose that is not the one in `pyproject.toml`.
+- **zizmor findings** in `.github/workflows/`. The step has no
+  `continue-on-error`, so a finding fails the job; it also uploads SARIF to code
+  scanning. It is auditing our own CI for template injection and unpinned
+  actions, which is why every `uses:` in there is pinned to a commit.
+
+`pyright` runs and does not block: it is `continue-on-error` in CI and its nox
+session accepts a non-zero exit. It exists to prove the public API is usable by
+the large pyright/Pylance population, who see only the static stubs and not the
+mypy plugin. mypy is the merge gate.
 
 ## Testing conventions
 
@@ -77,6 +142,12 @@ hostile input.
 If you add a security invariant, add a mutation of it to your own check that the
 test is load-bearing. Several tests in this repository exist because a mutation
 survived and revealed a gap.
+
+If you touch the audit chain or the break-glass throttle, run against
+PostgreSQL before pushing. The concurrency tests skip on SQLite, which
+serialises writes at the file level and so cannot show a lock race either way —
+an honest skip, and one that means a whole class of bug is invisible locally
+until CI finds it.
 
 ## Reporting a vulnerability
 
