@@ -470,3 +470,43 @@ class TestCommand:
 
     def test_list_shows_accounts(self, enabled, operator) -> None:
         assert "firefighter" in run("list")
+
+
+class TestNetworkParsingInIsolation:
+    """``_network_allows`` is called with an address the caller has already
+    normalised, so these paths are defence in depth rather than reachable from
+    the view — and defence in depth that nothing exercises is decoration."""
+
+    @pytest.fixture(autouse=True)
+    def _restricted(self, settings):
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": [SINK],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8"],
+            }
+        }
+
+    def test_an_address_in_range_is_allowed(self) -> None:
+        from bastion.breakglass.service import _network_allows
+
+        assert _network_allows("10.1.2.3")
+
+    def test_a_string_that_is_not_an_address_fails_closed(self) -> None:
+        """The direction to fail in: an allowlist exists, and this is not a
+        member of it."""
+        from bastion.breakglass.service import _network_allows
+
+        assert not _network_allows("not-an-address")
+
+    def test_no_address_fails_closed(self) -> None:
+        from bastion.breakglass.service import _network_allows
+
+        assert not _network_allows(None)
+
+    def test_an_empty_allowlist_admits_everything(self, settings) -> None:
+        """Documented, warned about by bastion.W032, and not silently applied."""
+        from bastion.breakglass.service import _network_allows
+
+        settings.BASTION = {"BREAK_GLASS": {"ENABLED": True, "ALLOWED_NETWORKS": []}}
+        assert _network_allows(None)

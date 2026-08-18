@@ -137,6 +137,16 @@ def _already_refused(client_ip: str | None, reason: str) -> bool:
 
 
 def _network_allows(client_ip: str | None) -> bool:
+    """Whether the allowlist admits this address.
+
+    Parses the address itself rather than trusting the caller to have done it.
+    ``authenticate_break_glass`` resolves the address through
+    ``client_address``, which now returns ``None`` for anything that is not one,
+    so in that path the ``ValueError`` below is unreachable -- but this is the
+    function that decides whether an unauthenticated caller is answered, and it
+    is one refactor away from being handed a raw header value. Failing closed on
+    a string it cannot parse costs a try block.
+    """
     networks = _config().get("ALLOWED_NETWORKS", [])
     if not networks:
         # Empty means unrestricted, and that is a deliberate configuration the

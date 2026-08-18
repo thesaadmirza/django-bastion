@@ -289,3 +289,43 @@ class TestSchema:
             severity=Severity.NOTICE,
         )
         assert AuditEvent.objects.get().changes["is_staff"]["to"] is True
+
+
+class TestClientAddressResolution:
+    """``client_address`` is the single definition of "the client address".
+
+    The break-glass throttle counts audit rows by ``source_ip`` and derives its
+    own key from this function, so anything it returns has to be a value the
+    recorder can actually store — otherwise the two agree only by coincidence.
+    """
+
+    def test_a_real_address_is_returned(self, rf) -> None:
+        from bastion.audit.recorder import client_address
+
+        assert client_address(rf.post("/", REMOTE_ADDR="203.0.113.7")) == "203.0.113.7"
+
+    def test_ipv6_is_returned(self, rf) -> None:
+        from bastion.audit.recorder import client_address
+
+        assert client_address(rf.post("/", REMOTE_ADDR="2001:db8::1")) == "2001:db8::1"
+
+    def test_a_missing_address_is_none(self, rf) -> None:
+        from bastion.audit.recorder import client_address
+
+        request = rf.post("/")
+        request.META.pop("REMOTE_ADDR", None)
+        assert client_address(request) is None
+
+    def test_something_that_is_not_an_address_is_none(self, rf) -> None:
+        """PostgreSQL stores this column as inet, so a value that is not an
+        address raises on the way to the driver — on a write, where the
+        recorder's broad catch swallows it and loses the whole record, and on a
+        lookup, where it escapes into the caller."""
+        from bastion.audit.recorder import client_address
+
+        assert client_address(rf.post("/", REMOTE_ADDR="not-an-address")) is None
+
+    def test_a_request_with_no_meta_at_all_is_none(self) -> None:
+        from bastion.audit.recorder import client_address
+
+        assert client_address(object()) is None

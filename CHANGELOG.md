@@ -141,6 +141,18 @@ dropping it is the one outcome worse than a failed boot.
   startup; if it is reached anyway the entry is logged and matches nothing,
   which fails in the direction that grants nothing.
 
+- **A `REMOTE_ADDR` that is not an address lost the whole audit record, on
+  PostgreSQL only.** `source_ip` is a `GenericIPAddressField`, which is `inet`
+  there, and Django adapts the value through `ipaddress.ip_address` on the way
+  to the driver. A value that is not an address therefore raises rather than
+  being stored — and on the write path that exception is caught by the
+  recorder's own "a sink must never fail a login" rule, so the record vanished
+  silently and only on one backend. `client_address` now normalises anything
+  that is not an address to `None`, which keeps the record with an empty
+  address field, and keeps every lookup that compares against `source_ip`
+  working — including the break-glass deduplication above, which is a lookup
+  and so raised into the caller rather than being swallowed.
+
 ### Documentation
 
 - The settings reference gains `LINKABLE_EMAIL_DOMAINS`, `local_login`,

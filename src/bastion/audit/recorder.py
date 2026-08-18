@@ -13,6 +13,7 @@ the event most worth recording, so the call sites emit on both paths.
 from __future__ import annotations
 
 import datetime as dt
+import ipaddress
 import logging
 from typing import Any
 
@@ -115,5 +116,36 @@ def client_address(request: Any) -> str | None:
     known to strip it, and getting that wrong writes attacker-chosen values
     into the evidence. Deployments behind a proxy should set REMOTE_ADDR
     correctly at the edge.
+
+    **Anything that is not an address becomes ``None``.** ``source_ip`` is a
+    ``GenericIPAddressField``, which is ``inet`` on PostgreSQL, and Django
+    adapts the value through ``ipaddress.ip_address`` on the way to the driver
+    -- for a write *and* for a lookup. A value that is not an address therefore
+    raises there rather than being stored, and on the write path that exception
+    is swallowed by the recorder's own "a sink must never fail a login" catch:
+    the whole audit record is lost, silently, and only on PostgreSQL.
+
+    Returning ``None`` instead keeps the record, with the address field empty,
+    which is the truthful representation of "the application was handed
+    something that is not an address". It also keeps this function's promise to
+    the break-glass throttle intact: every value it returns is one the recorder
+    can store and the throttle can look up.
+
+    A real TCP connection cannot produce this -- the server writes REMOTE_ADDR
+    from the socket -- so in practice it means a misconfigured proxy rewriting
+    it, or a synthetic request. Both are worth a record rather than a silent
+    drop or a traceback.
     """
-    return getattr(request, "META", {}).get("REMOTE_ADDR") or None
+    address: str | None = getattr(request, "META", {}).get("REMOTE_ADDR") or None
+    if address is None:
+        return None
+    try:
+        ipaddress.ip_address(address)
+    except ValueError:
+        logger.warning(
+            "REMOTE_ADDR is %r, which is not an IP address; recording this "
+            "event without a source address. Check what sets it at the edge.",
+            address,
+        )
+        return None
+    return address
