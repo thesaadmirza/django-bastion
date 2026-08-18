@@ -10,7 +10,154 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a7.
+Eleven reports from a deployment that put this in front of a real admin, worked
+through in order. The theme running through most of them is the same: a check or
+a message that was right about the general case and wrong about the project in
+front of it, and a package has no business making a deployment write its settings
+conditionally to get past a check.
+
+**One breaking change**, and it is a rename: `require_group_match` is now
+`require_privileged_user`. The old key is refused at startup with a message
+naming the new one rather than accepted and ignored, because it is the only
+control stopping an unprivileged account from holding a session and silently
+dropping it is the one outcome worse than a failed boot.
+
+### Added
+
+- **`IDENTITY["LINKING_POLICY"] = "verified_email_once"` exists now.** It was
+  declared, documented, referenced by `bastion.E026`'s own hint, and implemented
+  nowhere, so the only behaviour was `subject_only` — meaning no project with
+  existing administrators could adopt them. Every one of them got a second
+  account on their first sign-in, named from the provider's subject, with their
+  permissions and history stranded on the first.
+
+  Adoption happens once and only when all five hold: the provider says the
+  address is **verified** (`Verified.UNKNOWN` is not enough here, unlike
+  `REQUIRE_VERIFIED_EMAIL`), the domain is in the new
+  `IDENTITY["LINKABLE_EMAIL_DOMAINS"]`, exactly one local account holds the
+  address, that account has no federated identity yet, and it is not a
+  break-glass account. Afterwards the account is pinned to `(issuer, subject)`
+  like any other. `bastion.E029` refuses the policy with an empty domain list,
+  since the pin is the control that makes it safe. Adoptions and refusals to
+  adopt are both audited.
+
+- **`persist_refused_identities` on a connection.** Resolution runs before the
+  privilege gate, so a person the connection refuses has always been given a
+  `User` row and a `FederatedIdentity` row by the time the refusal renders. That
+  is useful — it is the audit trail, and ticking `is_staff` on the row is how the
+  first administrator is onboarded — but it was not written down anywhere, and it
+  means anyone the provider will authenticate can append to your user table by
+  attempting a login they cannot complete. The behaviour is now documented and
+  the setting turns it off, refusing from the claims before anything is written.
+
+- **`ADMIN["local_login"]` does something.** It was declared and inert. It now
+  answers the question `bastion.E023` is really asking — what a local password is
+  allowed to be in this project — with `"breakglass_only"` (the default),
+  `"never"`, and `"elsewhere"` for a project where the Django admin is one part
+  of a larger application whose portal and API authenticate with passwords and
+  cannot stop. `"elsewhere"` turns the error into `bastion.W031`, so the decision
+  stays visible on every check run. Enabling an emergency credential endpoint to
+  satisfy a check, which was the only way through before, is turning on a
+  security-relevant route for the wrong reason. `bastion.E024` refuses an
+  unknown value rather than reading it as the strictest one.
+
+- **`bastion.W032` and `bastion.E102`, for the break-glass network allowlist.**
+  Two docstrings said an empty `ALLOWED_NETWORKS` was "the deliberate
+  configuration the startup check warns about". There was no such check, so
+  emergency access could be enabled and reachable from any address on the
+  internet with nothing said anywhere. W032 is the warning they promised — a
+  warning, not an error, because an allowlist your office is in is one the hotel
+  you are in at 3am is not. E102 refuses an entry that is not a network at all:
+  `ipaddress` raises on those inside the branch deciding whether to answer an
+  unauthenticated caller, so a typo there was a 500 on the emergency login,
+  discovered during the emergency.
+
+- **`bastion_doctor --base-url`**, to print the exact callback URL against an
+  address you know rather than one assembled from settings.
+
+### Changed
+
+- **`require_group_match` is `require_privileged_user`.** It never looked at
+  groups; it reads `is_staff` and `is_superuser`. The old name described the
+  usual *cause* of those flags rather than what is tested, and on a provider
+  that publishes no group claim at all — Google — it made the switch look
+  inapplicable to the deployment it matters most to. Without it every account in
+  the tenant authenticates, holds a Django session, and is stopped only at the
+  admin door.
+
+- **`bastion_doctor` prints the callback URL, not the callback path.** The path
+  was right and useless: a deployment behind a load balancer that terminates TLS
+  without `SECURE_PROXY_SSL_HEADER` builds `http://` redirect URIs while the
+  `https://` one is registered at the provider, every sign-in fails with
+  `redirect_uri_mismatch`, and the output pointed at none of it because the path
+  in it was correct. The scheme is knowable at check time, so it is shown, along
+  with which setting it came from, and `http://` warns. The caveat that used to
+  be prose underneath is now attached to the thing it qualifies.
+
+- **`bastion.E023` imports backends and tests `issubclass(cls, ModelBackend)`**
+  instead of matching the dotted path. A project with a `UsernameOrEmailBackend`
+  passed the check by deleting `ModelBackend` from the list while the subclass
+  went on authenticating with a username and password exactly as before. A check
+  that can be silenced by a change closing nothing is worse than no check,
+  because now there is a green tick beside it. A backend that cannot be imported
+  is left to Django, which raises on it at the first `authenticate()`.
+
+- **A connection entry that is *incomplete* now warns (`bastion.W027`) rather
+  than refusing to boot.** A missing `client_id` is a state every deployment
+  passes through — a checkout or a CI run whose credentials are not in the
+  environment yet — and erroring on it forces settings to be written
+  conditionally just to keep those environments alive. A *wrong* value is still
+  an error: it is wrong in every environment and no amount of secrets fixes it.
+  When nothing in the project can reach a connection at all — the admin
+  integration off and `bastion.urls` not routed — even a wrong one only warns,
+  because a typo in an entry nobody is using should not take the site down.
+  `bastion.W028` is the same downgrade for an admin connection named while SSO is
+  not live. `bastion_doctor` still fails on every one of these, which is the gate
+  to put in a deployment pipeline.
+
+### Fixed
+
+- **The break-glass network denial amplified.** Its branch recorded and alerted
+  with nothing rate limiting it, while the throttle immediately below it had
+  deduplication from the start — and the network branch is the one anyone can
+  reach: the view is `login_not_required` and deliberately outside django-axes,
+  so every request from outside the allowlist cost one chained audit write,
+  which takes `SELECT FOR UPDATE` on the chain head and serialises against every
+  other audit write in the system, plus one synchronous alert. With a sink that
+  reaches a paging API on a long timeout, a loop against the URL holds workers
+  open. Refusals are now recorded once per address per reason per window, on
+  both branches, including for a request with no address at all. Successes are
+  never suppressed: a flood must not be able to hide the one event that matters.
+
+- **`manage.py check` no longer imports the OIDC stack when no connections are
+  configured.** The import ran above the loop whatever `CONNECTIONS` held,
+  pulling in `cryptography` — roughly 120ms cold — and Django runs system checks
+  ahead of nearly every management command, so every command in every
+  environment paid it, including ones with SSO switched off and nothing here to
+  check.
+
+- **A malformed CIDR in `ALLOWED_NETWORKS` raised out of the gate** deciding
+  whether to answer an unauthenticated caller. `bastion.E102` catches it at
+  startup; if it is reached anyway the entry is logged and matches nothing,
+  which fails in the direction that grants nothing.
+
+### Documentation
+
+- The settings reference gains `LINKABLE_EMAIL_DOMAINS`, `local_login`,
+  `persist_refused_identities`, the renamed `require_privileged_user`, a section
+  on migrating an existing user table, and a plain statement that refused logins
+  still create rows.
+- `bastion.backends` no longer claims a `bastion.W025` check warns about
+  backends that drop `user_can_authenticate`. There is no such check and there
+  was never going to be one — whether an override honours the method is a
+  property of what it does at request time, and a check guessing from source
+  would be confidently wrong in both directions. The invariant is asserted by
+  tests, and the docstring now says so. Same defect as the missing
+  `ALLOWED_NETWORKS` warning, which is why it is named rather than quietly
+  deleted.
+- `test_docs.py` gains the other half of the inert-settings guard: an entry that
+  stays behind after the feature lands makes the list say a control does nothing
+  when it now does, and only a test in that direction catches it.
 
 ## [0.0.1a7] - 2026-08-11
 

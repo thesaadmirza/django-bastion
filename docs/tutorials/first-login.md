@@ -76,7 +76,20 @@ python manage.py bastion_doctor
 
 This is the step that saves the afternoon. It fetches the discovery document,
 validates the issuer binding, confirms the provider offers an algorithm we
-accept, primes the key set, and prints the callback path to register.
+accept, primes the key set, and prints the callback URL to register:
+
+```
+warn  urls: Callback URL is http://api.example.com/sso/callback/
+      This is http://, not https://, and most providers refuse to register or
+      redirect to a plain-http URI outside localhost...
+```
+
+The scheme is the part to read. It is assembled from `ALLOWED_HOSTS` and your
+TLS settings, and the hint says which setting it came from, because a
+deployment behind a load balancer that terminates TLS without
+`SECURE_PROXY_SSL_HEADER` builds `http://` redirect URIs while the `https://`
+one is registered at the provider. Pass `--base-url https://api.example.com` if
+you would rather compare against the address you know you are reached on.
 
 Items marked `?` could not be checked from here and say so. That is deliberate:
 whether your redirect URI is registered and whether the group claim actually

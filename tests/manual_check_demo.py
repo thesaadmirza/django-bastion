@@ -19,7 +19,22 @@ config["AUTHENTICATION_BACKENDS"] = [
     "bastion.backends.SSOBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
-config["BASTION"] = {"IDENTITY": {"KEY": ("email",)}}
+config["BASTION"] = {
+    "IDENTITY": {"KEY": ("email",), "LINKING_POLICY": "verified_email_once"},
+    # Enabled, with nobody to alert and an allowlist entry that is not a
+    # network. Swap ALLOWED_NETWORKS for [] to see W032 instead of E102, and
+    # turn ENABLED off to bring E023 back: break-glass being on is what makes a
+    # password backend alongside SSO acceptable.
+    "BREAK_GLASS": {"ENABLED": True, "ALERT_SINKS": [], "ALLOWED_NETWORKS": ["office"]},
+    "CONNECTIONS": {
+        # Incomplete rather than wrong, so a warning: the shape a checkout has
+        # before its credentials arrive.
+        "corp": {"issuer": "https://idp.example.test", "client_id": ""},
+        # Wrong in every environment, so an error.
+        "old": {"issuer": "https://idp.example.test", "client_id": "x", "provider": "nope"},
+    },
+    "ADMIN": {"connection": "typo"},
+}
 
 settings.configure(**config)
 django.setup()

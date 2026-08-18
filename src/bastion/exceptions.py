@@ -26,6 +26,23 @@ class ConfigurationError(BastionError):
     ``manage.py check --deploy`` catches it rather than a user at 3am."""
 
 
+class IncompleteConfiguration(ConfigurationError):
+    """A required value is absent rather than wrong.
+
+    The distinction is the difference between a state every deployment passes
+    through and a mistake. A checkout whose ``BASTION_CLIENT_SECRET`` is not in
+    the environment yet is incomplete; a connection naming a provider that does
+    not exist is wrong, and stays wrong in every environment. The startup check
+    warns about the first and refuses the second, so a developer checkout and a
+    CI run boot and say why instead of having to write their settings
+    conditionally to get past the check.
+
+    Still a ``ConfigurationError``, because every existing caller catches that
+    and must keep treating this as one: an incomplete connection cannot be used
+    to sign anybody in, and ``bastion_doctor`` still fails on it.
+    """
+
+
 # --------------------------------------------------------------------------- #
 # Token verification
 # --------------------------------------------------------------------------- #
@@ -176,7 +193,11 @@ class ProvisioningConflict(BastionError):
     keyed on it, and when a second connection serves people who already signed
     in through the first.
 
-    An operator resolves it by linking the two deliberately, or renaming one.
+    An operator resolves it by renaming one, by linking the two by hand, or by
+    turning on ``IDENTITY["LINKING_POLICY"] = "verified_email_once"``, which
+    adopts a local account on a *verified address from a pinned domain* rather
+    than on a name the provider chose. That is the narrow case where adoption
+    is defensible, and it is opt-in for the same reason this exception exists.
     """
 
 

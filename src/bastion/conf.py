@@ -35,6 +35,16 @@ T = TypeVar("T")
 
 SETTING_NAME = "BASTION"
 
+#: Accepted values for ``IDENTITY["LINKING_POLICY"]``. Declared here rather
+#: than beside the code that reads them so the startup check can validate the
+#: value without importing the auth backend, and through it the models.
+SUBJECT_ONLY = "subject_only"
+VERIFIED_EMAIL_ONCE = "verified_email_once"
+LINKING_POLICIES = frozenset({SUBJECT_ONLY, VERIFIED_EMAIL_ONCE})
+
+#: Accepted values for ``ADMIN["local_login"]``. See the key's comment below.
+LOCAL_LOGIN_POLICIES = frozenset({"breakglass_only", "never", "elsewhere"})
+
 #: Code-level extension points and defaults only. Anything describing a
 #: *specific* identity provider belongs in the database.
 DEFAULTS: dict[str, Any] = {
@@ -51,7 +61,22 @@ DEFAULTS: dict[str, Any] = {
         # IdP admin who can change an address takes over an account. That is
         # allauth CVE-2025-65431, seen in the wild against Okta and NetIQ.
         "KEY": ("issuer", "subject"),
+        # "subject_only" never adopts a local account. "verified_email_once"
+        # adopts one on first sign-in when the provider says the address is
+        # verified, the domain is pinned below, exactly one local account holds
+        # the address and it has no federated identity yet -- then pins to the
+        # subject like any other. It exists because every project with existing
+        # administrators is otherwise asked to reconcile a second account for
+        # each of them by hand, and "email matching is unsafe" does not have to
+        # mean "no linking at all".
         "LINKING_POLICY": "subject_only",
+        #: Domains an adoption may cross, e.g. ["example.com"]. Empty refuses
+        #: every adoption, and a startup check refuses the combination of
+        #: verified_email_once with an empty list rather than letting the pin
+        #: read as configured while matching nothing. The pin is what stops
+        #: somebody proving an address at any domain the provider will federate
+        #: and claiming the local account that holds it.
+        "LINKABLE_EMAIL_DOMAINS": [],
         "REQUIRE_VERIFIED_EMAIL": True,
     },
     # v0.1 maps groups to flags per connection via staff_groups and
@@ -74,6 +99,21 @@ DEFAULTS: dict[str, Any] = {
         # connection flag.
         "require_mfa": False,
         "reauth_max_age": 3600,
+        # What a local password is allowed to be in this project, and the
+        # answer bastion.E023 is asking for.
+        #
+        # "breakglass_only" (default) -- a password reaches the site only
+        #     through break-glass. A ModelBackend subclass alongside SSO with
+        #     break-glass off is refused.
+        # "never" -- no password path at all. Any ModelBackend subclass is
+        #     refused, break-glass or not.
+        # "elsewhere" -- passwords serve other parts of this project, a
+        #     customer portal or an API, and the admin is protected by the SSO
+        #     admin site rather than by their absence. E023 does not fire and
+        #     bastion.W031 records the decision on every check run, because the
+        #     check cannot verify the claim: AUTHENTICATION_BACKENDS is global,
+        #     and any login form in the project can put a password-authenticated
+        #     session in front of the admin.
         "local_login": "breakglass_only",
     },
     "BREAK_GLASS": {
@@ -81,7 +121,7 @@ DEFAULTS: dict[str, Any] = {
         # than not having one.
         "ENABLED": False,
         #: CIDRs the emergency login answers from. Empty means anywhere, which
-        #: the startup check warns about rather than silently accepting.
+        #: ``bastion.W032`` warns about rather than silently accepting.
         "ALLOWED_NETWORKS": [],
         #: Callables taking (subject, detail), fired synchronously. A startup
         #: check refuses to run with break-glass on and this empty.

@@ -20,7 +20,7 @@ from django.core.signals import setting_changed
 from django.dispatch import receiver
 
 from bastion.conf import get_setting
-from bastion.exceptions import ConfigurationError
+from bastion.exceptions import ConfigurationError, IncompleteConfiguration
 from bastion.protocols.oidc.client import ClientAuthMethod
 from bastion.protocols.oidc.discovery import DiscoveryCache, ProviderMetadata
 from bastion.protocols.oidc.jwks import JWKSStore
@@ -51,11 +51,32 @@ class Connection:
     staff_groups: tuple[str, ...] = ()
     superuser_groups: tuple[str, ...] = ()
 
-    # Whether an authenticated person with no matching group may sign in at
+    # Whether an authenticated person with no privilege may hold a session at
     # all. Off means authentication succeeds and authorisation does not, which
     # is the right default: the distinction is what makes the failure page able
     # to say something useful.
-    require_group_match: bool = False
+    #
+    # It reads ``is_staff`` and ``is_superuser`` rather than the group claim,
+    # and the name now says so. It was ``require_group_match``, which described
+    # the usual *cause* of the flags rather than what is tested, and made the
+    # switch look inapplicable to a provider that publishes no groups. Google is
+    # exactly that provider, and this is the only thing that stops a whole
+    # Workspace holding a Django session there.
+    require_privileged_user: bool = False
+
+    #: Whether an identity this connection is about to refuse still gets a
+    #: ``User`` row.
+    #:
+    #: On by default, and that is not an oversight. The row is the audit trail
+    #: and it is how an administrator grants the first person access: they sign
+    #: in, get refused, and somebody ticks is_staff on the row that appeared.
+    #: Turning it off closes that door -- and closes the one where anybody the
+    #: provider will authenticate can append to your user table by attempting a
+    #: login they cannot complete, which on a large tenant is a lot of rows.
+    #:
+    #: Only consulted when ``require_privileged_user`` is on, because that is
+    #: the only case where a login is refused before a session exists.
+    persist_refused_identities: bool = True
 
     # Logout. Clearing the local session is not signing out: the provider's own
     # session cookie survives it, and the next click on a protected URL is
@@ -161,6 +182,10 @@ _cache_lock = threading.Lock()
 _RENAMED_KEYS = {
     "discovery": "use 'issuer', which takes the same URL",
     "protocol": f"drop it, and set 'provider' to one of {sorted(REGISTRY)}",
+    "require_group_match": (
+        "use 'require_privileged_user', which is the same switch under a name "
+        "that says what it tests: is_staff or is_superuser, never the group claim"
+    ),
 }
 
 
@@ -200,7 +225,12 @@ def build_connection(identifier: str, config: dict[str, Any]) -> Connection:
 
     for name in _REQUIRED:
         if not config.get(name):
-            raise ConfigurationError(f"connection {identifier!r} is missing {name!r}")
+            # Absent, not wrong. Raised as the narrower subclass so the startup
+            # check can warn about a checkout whose credentials are not in the
+            # environment yet while still refusing a connection that is
+            # malformed. Every caller catches ConfigurationError, so nothing
+            # downstream changes: an incomplete connection is still unusable.
+            raise IncompleteConfiguration(f"connection {identifier!r} is missing {name!r}")
 
     kwargs = dict(config)
     try:
