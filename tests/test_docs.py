@@ -29,6 +29,11 @@ def markdown_files() -> list[Path]:
     files = sorted(DOCS.rglob("*.md"))
     files += [ROOT / "README.md", ROOT / "SECURITY.md", ROOT / "CHANGELOG.md"]
     files += [ROOT / "GOVERNANCE.md", ROOT / "SUPPORT_MATRIX.md", ROOT / "MAINTAINERS.md"]
+    # CONTRIBUTING and the code of conduct were not on this list, so their
+    # links were the only ones in the repository nothing checked -- including,
+    # for a while, an instruction to put changelog fragments in a directory
+    # that has never existed.
+    files += [ROOT / "CONTRIBUTING.md", ROOT / "CODE_OF_CONDUCT.md"]
     return [f for f in files if f.exists()]
 
 
