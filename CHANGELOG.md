@@ -10,6 +10,34 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+### Changed
+
+- **Break-glass is documented as advanced and taken out of the common path.**
+  It was already off by default; what changed is everything that led people to
+  it anyway.
+
+  `bastion.E023` offered it as the second of three fixes, ahead of
+  `ADMIN["local_login"]`. A deployment took that advice, stood up an
+  unauthenticated credential endpoint purely to satisfy a check, and turned it
+  straight back off once `local_login` existed — which is the outcome the
+  feature should least produce. The hint now offers, in order: remove the
+  backend, declare `local_login`, and only then break-glass, with the note that
+  enabling it to satisfy the check is the one reason not to. A test pins that
+  ordering.
+
+  It is out of the tutorial's "before this is production" steps. That section
+  now says to decide what happens when the provider is unavailable, and lists
+  the answers that do not add a login route — a cloud console, a shell, a
+  second provider — alongside the one that does. A getting-started page should
+  not be the reason a project takes on its most sensitive surface.
+
+  Out of the README's feature list too, into its own section that leads with
+  what it costs. The design is unchanged and the runbook is unchanged: the
+  written reason, the out-of-band alerting, critical severity on both outcomes,
+  the refusal to delete the last account, the drill command. Nothing about it
+  got worse; it stopped being suggested to people who had not decided they
+  wanted it.
+
 ### Added
 
 - **`manage.py bastion_access`** — who can reach the admin right now, and on
