@@ -184,6 +184,18 @@ def test_the_package_reports_the_version_it_was_built_as() -> None:
     )
 
 
+#: Pages that name versions other than the current one, on purpose.
+#:
+#: The changelog is a history. The deprecation policy states a rule that spans
+#: releases -- "refused in 0.1.0, still refused in 0.2.0 and 0.3.0, removed in
+#: 0.4.0" -- and rewriting those to the current version would destroy the
+#: sentence.
+_VERSION_DRIFT_EXEMPT = {
+    "CHANGELOG.md",
+    "docs/reference/deprecation-policy.md",
+}
+
+
 def test_no_page_states_a_version_that_is_not_this_one() -> None:
     """Version strings in prose drift, because bumping pyproject does not touch
     them and nobody greps.
@@ -201,14 +213,19 @@ def test_no_page_states_a_version_that_is_not_this_one() -> None:
     ]
     pattern = re.compile(r"\b\d+\.\d+\.\d+(?:a|b|rc)?\d*\b")
 
+    # Ours, not Django's or Python's. This package is 0.x while Django is 5.x
+    # and 6.x and Python is 3.x, so the leading zero is the whole test.
+    #
+    # It used to be `startswith("0.0.1")`, which was true of every version that
+    # had ever existed and stopped being true at 0.1.0. That would have left
+    # the test passing while checking nothing, on the release where the version
+    # appears in more prose than any before it.
     stale: dict[str, list[str]] = {}
     for path in [ROOT / "README.md", *sorted(DOCS.rglob("*.md"))]:
-        found = {
-            v
-            for v in pattern.findall(path.read_text(encoding="utf-8"))
-            # Only our own release line; Django and Python versions live here too.
-            if v.startswith("0.0.1")
-        }
+        if str(path.relative_to(ROOT)) in _VERSION_DRIFT_EXEMPT:
+            continue
+        text = path.read_text(encoding="utf-8")
+        found = {v for v in pattern.findall(text) if v.startswith("0.")}
         if found - {declared}:
             stale[str(path.relative_to(ROOT))] = sorted(found - {declared})
 

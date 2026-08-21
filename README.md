@@ -1,18 +1,21 @@
 # django-bastion
 
 Enterprise SSO and identity governance for Django. Puts the admin behind your identity provider, turns
-the group claim into staff and superuser rights, records who got what and when, and leaves you a fire
-escape for the morning the provider is down.
+the group claim into staff and superuser rights, and records who got what and when.
 
-> **Status: alpha, version 0.0.1a9.** The API can change in any later version, patch releases included,
-> and nothing is promised about upgrades until 1.0. OIDC works end to end. SAML, SCIM and the rule engine
-> do not exist yet, and the pages that mention them say so.
+> **Version 0.1.0, and the configuration surface is now frozen.** Every settings key, check id and audit
+> event name is covered by a written
+> [deprecation policy](docs/reference/deprecation-policy.md): a renamed key is refused at startup with a
+> message naming its replacement, and stays refused for two minor versions. What is *not* covered is
+> everything else — module paths, function signatures, class layouts — so importing from
+> `bastion.protocols` is holding something that moves.
+>
+> Still pre-1.0, and the bus factor is 1. OIDC works end to end; SAML, SCIM and the rule engine do not
+> exist, and the pages that mention them say so.
 
 ```bash
-pip install --pre django-bastion
+pip install django-bastion
 ```
-
-`--pre` is not optional: 0.0.1a9 is a pre-release, and pip skips those unless asked.
 
 ## Quickstart
 

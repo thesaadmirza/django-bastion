@@ -10,7 +10,48 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a9.
+Nothing since 0.1.0.
+
+## [0.1.0] - 2026-08-21
+
+**The configuration stops moving.**
+
+There is almost no code in this release. 0.0.1a9 shipped the work; this is the
+commitment, and the version number is the whole of it. From here the
+[deprecation policy](docs/reference/deprecation-policy.md) applies: every
+settings key, check id and audit event name is covered, a renamed key is
+refused at startup with a message naming its replacement, and it stays refused
+for two minor versions before the name is released.
+
+What is not covered is stated as plainly: module paths, function signatures and
+class layouts may move in any release. If you import from `bastion.protocols`,
+you are holding something that moves. `bastion.testing` is covered.
+
+This is not 1.0 and does not pretend to be. OIDC works end to end and SAML,
+SCIM and the rule engine do not exist. The bus factor is 1. What changes today
+is narrower than "stable": the configuration you write down will keep meaning
+what it means, or fail loudly telling you what it means now.
+
+### Changed
+
+- `pip install django-bastion` no longer needs `--pre`. 0.1.0 is a release
+  rather than a pre-release, and pip will find it.
+- The Trove classifier moves from `2 - Pre-Alpha` to `3 - Alpha`.
+
+### Fixed
+
+- **The version-drift test had stopped being able to fail.** It matched prose
+  versions with `startswith("0.0.1")`, which was true of every version that had
+  ever existed — and false of 0.1.0. It would have gone on passing while
+  checking nothing, on the release where the version appears in more prose than
+  any before it.
+
+  It keys on the leading `0.` now, which separates this package from Django's
+  5.x and 6.x and Python's 3.x, and the deprecation policy joins the changelog
+  as exempt: it names 0.1.0 through 0.4.0 to state the refusal window, and
+  rewriting those to the current version would destroy the sentence.
+
+  Found while cutting this release, by the test failing to fail.
 
 ## [0.0.1a9] - 2026-08-21
 

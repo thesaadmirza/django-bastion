@@ -532,7 +532,7 @@ wheels = [
 
 [[package]]
 name = "django-bastion"
-version = "0.0.1a9"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
