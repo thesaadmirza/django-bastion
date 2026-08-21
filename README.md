@@ -132,9 +132,9 @@ MariaDB all pass the full test suite on every push. Oracle is not supported.
 [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md) has the versions each backend was actually run against, and the
 version-dropping policy.
 
-There is a `[saml]` extra, and installing it today gets you pysaml2 and nothing else, because the SAML
-implementation does not exist yet. The extra is reserved so the install line will not change on the day it
-does, and it stays optional because pysaml2 pulls in xmlsec, which needs system packages.
+There are no `[saml]`, `[ldap]` or `[scim]` extras. They were declared and shipped no modules, so
+installing one pulled in a protocol stack you had nothing to call. They come back one at a time, each with
+an implementation and a live tenant behind it.
 
 ## Documentation
 

@@ -53,11 +53,16 @@ classifiers = [
 # src/bastion/protocols/oidc for why.
 oidc = []
 
-# SAML is opt-in because it drags in xmlsec, which needs system packages, and
-# the common case does not need it.
-saml = ["pysaml2>=6.5.0"]
-ldap = ["django-auth-ldap>=4.8", "python-ldap>=3.4.5"]
-scim = []
+# `saml`, `ldap` and `scim` were declared here and shipped no modules, so
+# installing one pulled a protocol stack in and gave you nothing to call. They
+# are gone until each has an implementation and a live tenant behind it.
+#
+# Reserving a name costs more than it saves. `[saml]` installed pysaml2 and
+# xmlsec, `[ldap]` built python-ldap from source against OpenLDAP headers, and
+# both put a signature-handling library with its own vulnerability history into
+# the dependency tree of a package that could not call it. Adding an extra
+# later is a one-line change; standing behind two more protocols before the
+# first one has settled is not.
 
 [project.urls]
 Homepage = "https://github.com/thesaadmirza/django-bastion"
