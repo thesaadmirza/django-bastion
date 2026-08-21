@@ -125,14 +125,19 @@ has no group claim at all.
 
 ## 8. Before this is production
 
-Two things, in order.
-
-**Set up break-glass.** Right now a provider outage locks out everyone,
-including whoever would fix it. See the
-[break-glass runbook](../security/break-glass-runbook.md).
-
 **Work through the [deployment checklist](../security/deployment-checklist.md).**
 It is short and about a third of it is automated.
+
+Then decide, deliberately, what happens when the provider is unavailable. Right
+now an outage locks out everyone, including whoever would fix it, and there are
+several answers: a cloud console that can flip a flag, a shell on the box, a
+second provider — or bastion's own
+[break-glass](../security/break-glass-runbook.md), which is an unauthenticated
+credential endpoint and is off by default for that reason.
+
+It is not a step in this tutorial on purpose. A deployment that turns on an
+emergency credential route because a getting-started page said to has taken on
+the most sensitive surface this package has without deciding to.
 
 ## What you have now
 

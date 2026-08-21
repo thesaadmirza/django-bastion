@@ -218,9 +218,23 @@ defaults to `/admin/`.
 
 ## `BREAK_GLASS`
 
+**Advanced, and off by default.** This is an unauthenticated credential
+endpoint — the most sensitive surface in the package — so it is deliberately
+absent from the quickstart and from the tutorial. Arrive at it by deciding you
+need an emergency route, not by following a getting-started page.
+
+Most projects do not. A cloud console that can flip a flag, a shell on the box,
+or a second provider all answer "the IdP is down" without adding a login route.
+
+**Do not enable it to satisfy `bastion.E023`.** That check is asking what your
+password path is *for*, and the answer for a portal or an API is
+`ADMIN["local_login"] = "elsewhere"`. Turning on an emergency credential route
+to quiet a check means standing up the surface for the one reason that is not a
+reason — and it is what happened to the deployment that reported this.
+
 | Key | Default | Meaning |
 |---|---|---|
-| `ENABLED` | `False` | |
+| `ENABLED` | `False` | Off. See above before changing it |
 | `ALERT_SINKS` | `[]` | Callables taking `subject` and `detail`, fired synchronously. **A startup check refuses enabled-with-none** |
 | `ALLOWED_NETWORKS` | `[]` | CIDRs. Empty means anywhere, which `bastion.W032` and the doctor both warn about — a warning rather than an error, because an allowlist your office is in is one the hotel you are in at 3am is not. Entries that are not networks are refused outright by `bastion.E102`: `ipaddress` raises on them inside the branch deciding whether to answer an unauthenticated caller |
 | `MAX_FAILURES_PER_IP` | `5` | Credential failures from one address before that address is refused. `0` turns the throttle off |

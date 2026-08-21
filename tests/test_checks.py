@@ -46,6 +46,26 @@ class TestBackendOrdering:
         AUTHENTICATION_BACKENDS=[
             "bastion.backends.SSOBackend",
             "django.contrib.auth.backends.ModelBackend",
+        ]
+    )
+    def test_the_hint_offers_local_login_before_break_glass(self) -> None:
+        """The order is the fix for a reported outcome.
+
+        A deployment enabled break-glass -- an unauthenticated credential
+        endpoint -- purely to satisfy this check, because the hint offered it
+        first and `local_login` last. Standing up the most sensitive surface in
+        the package to quiet a check is the one reason not to, so the hint now
+        says that, in that order.
+        """
+        hint = next(m.hint for m in checks.check_backend_ordering(None) if m.id == "bastion.E023")
+        assert hint is not None
+        assert hint.index("local_login") < hint.index("break-glass")
+        assert "turning it on to satisfy this check is the one reason not to" in hint
+
+    @override_settings(
+        AUTHENTICATION_BACKENDS=[
+            "bastion.backends.SSOBackend",
+            "django.contrib.auth.backends.ModelBackend",
         ],
         BASTION={"BREAK_GLASS": {"ENABLED": True, "ALERT_SINKS": ["x.y"]}},
     )
