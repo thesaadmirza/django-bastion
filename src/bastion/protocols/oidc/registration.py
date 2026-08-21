@@ -122,7 +122,15 @@ def build_authorize_url(
     return f"{authorization_endpoint}{separator}{query}"
 
 
-def classify(*, status: int, location: str | None, body: str, redirect_uri: str) -> Probe:
+def classify(
+    *,
+    status: int,
+    location: str | None,
+    body: str,
+    redirect_uri: str,
+    authorization_endpoint: str = "",
+    sign_in_paths: tuple[str, ...] = (),
+) -> Probe:
     """Read the provider's answer. Pure, and the part that carries the rules.
 
     Order matters. A redirect back to our own URI is checked first because it
@@ -132,10 +140,13 @@ def classify(*, status: int, location: str | None, body: str, redirect_uri: str)
     error. ``redirect_uri_mismatch`` is never delivered that way -- it cannot
     be, since delivering it would mean using the URI under suspicion.
 
-    Everything after that is negative evidence or a shrug. Nothing here reports
-    success on the absence of an error: Entra answers a bad client id with HTTP
-    200 and an HTML page containing no OAuth error parameter, so "no error
-    seen" reported a broken deployment as healthy.
+    The error rules run next, before any other positive evidence is considered,
+    so a provider that both redirects somewhere plausible and names an error is
+    read as the error. Nothing here reports success on the absence of one.
+
+    ``sign_in_paths`` comes from the provider's quirks profile and answers for
+    providers that redirect to their sign-in page rather than serving it. See
+    ``_is_sign_in_redirect`` for why it is an allowlist of exact paths.
     """
     if location and _same_endpoint(location, redirect_uri):
         return Probe(
@@ -166,10 +177,39 @@ def classify(*, status: int, location: str | None, body: str, redirect_uri: str)
             "accepting the client id and the redirect URI.",
         )
 
+    if location and _is_sign_in_redirect(location, authorization_endpoint, sign_in_paths):
+        return Probe(
+            Registration.REGISTERED,
+            "The provider redirected to its own sign-in page, which it reaches "
+            "only after accepting the client id and the redirect URI.",
+        )
+
     return Probe(
         Registration.INCONCLUSIVE,
         f"The provider answered {status} with no sign-in form and no error this recognises.",
     )
+
+
+def _is_sign_in_redirect(
+    location: str, authorization_endpoint: str, sign_in_paths: tuple[str, ...]
+) -> bool:
+    """Whether the provider sent us to one of its own sign-in pages.
+
+    Membership is exact. A prefix or substring test would match the error pages
+    that live beside the real one -- Google's is ``/signin/oauth/error``, one
+    segment from ``/v3/signin/identifier`` -- and this function's answer reports
+    success.
+
+    The endpoint guard is against a caller, not a provider: ``urlsplit("")`` and
+    a relative ``Location`` both yield an empty scheme and netloc, so the origin
+    comparison would pass by matching nothing against nothing. Nothing in this
+    package can reach that, since ``build_authorize_url`` runs ``require_https``
+    first, but ``classify`` is a public pure function and a direct caller who
+    omits the endpoint should get a shrug rather than a pass.
+    """
+    if not authorization_endpoint:
+        return False
+    return _resolved_path_on(authorization_endpoint, location) in sign_in_paths
 
 
 def _decoded_errors(location: str | None) -> str:
@@ -201,21 +241,38 @@ def _decoded_errors(location: str | None) -> str:
     return "\n".join(found)
 
 
+def _resolved_path_on(base: str, location: str) -> str | None:
+    """The path a ``Location`` resolves to, if it lands on ``base``'s origin.
+
+    ``None`` when it lands anywhere else, which every caller reads as "no".
+    Both verdicts that report REGISTERED are decided here, so this is the
+    comparison to harden if any of default ports, punycode or userinfo in the
+    netloc ever needs handling -- and having one copy is the point.
+
+    Compared by scheme and host rather than by prefix: a prefix test treats
+    ``https://example.com.attacker.test/sso/callback/`` as a match for
+    ``https://example.com/sso/callback/``. The path is returned unchanged and
+    case-sensitively; callers decide what counts as equal.
+
+    Callers guarantee a non-empty ``base``. An empty one splits into an empty
+    scheme and netloc, which a relative ``Location`` would then match.
+    """
+    ours = urllib.parse.urlsplit(base)
+    theirs = urllib.parse.urlsplit(urllib.parse.urljoin(base, location))
+    if ours.scheme.lower() != theirs.scheme.lower():
+        return None
+    if ours.netloc.lower() != theirs.netloc.lower():
+        return None
+    return theirs.path
+
+
 def _same_endpoint(location: str, redirect_uri: str) -> bool:
     """Whether a Location header points at our callback.
 
-    Compared by scheme, host and path rather than by prefix. A prefix test
-    treats ``https://example.com.attacker.test/sso/callback/`` as a match for
-    ``https://example.com/sso/callback/``, and this function's answer is the
-    one thing that reports success.
+    RFC 6749 4.1.2.1: an authorization server must not redirect to a URI it has
+    not registered, so arriving at ours is proof.
     """
-    ours = urllib.parse.urlsplit(redirect_uri)
-    theirs = urllib.parse.urlsplit(urllib.parse.urljoin(redirect_uri, location))
-    return (
-        ours.scheme.lower() == theirs.scheme.lower()
-        and ours.netloc.lower() == theirs.netloc.lower()
-        and ours.path == theirs.path
-    )
+    return _resolved_path_on(redirect_uri, location) == urllib.parse.urlsplit(redirect_uri).path
 
 
 class _NoRedirects(urllib.request.HTTPRedirectHandler):
@@ -235,6 +292,7 @@ def probe_registration(
     authorization_endpoint: str,
     client_id: str,
     redirect_uri: str,
+    sign_in_paths: tuple[str, ...] = (),
     timeout: float = 15.0,
     opener: Any = None,
 ) -> Probe:
@@ -260,6 +318,8 @@ def probe_registration(
                 location=response.headers.get("Location"),
                 body=_read_capped(response),
                 redirect_uri=redirect_uri,
+                authorization_endpoint=authorization_endpoint,
+                sign_in_paths=sign_in_paths,
             )
     except urllib.error.HTTPError as exc:
         # A suppressed redirect arrives here, and so does a 4xx. Both carry the
@@ -270,6 +330,8 @@ def probe_registration(
                 location=exc.headers.get("Location"),
                 body=_read_capped(exc),
                 redirect_uri=redirect_uri,
+                authorization_endpoint=authorization_endpoint,
+                sign_in_paths=sign_in_paths,
             )
     except (urllib.error.URLError, http.client.HTTPException, OSError) as exc:
         return Probe(

@@ -6,12 +6,18 @@ MFA, because the providers do not agree on any of the three. A package that
 ships one generic path and calls the rest configuration is quietly wrong on
 every deployment that is not the one it was written against.
 
-Each class here answers four questions:
+Each class here answers four questions about a token's claims:
 
 - which claim is the stable subject, and what is it called
 - what do the group values mean, and is the list complete
 - did the provider actually say the address was verified
 - did a second factor happen
+
+A profile also carries a small amount of endpoint behaviour that no claim can
+express -- currently ``sign_in_paths``, read only by ``bastion_doctor``. That
+is a deliberate widening rather than drift: the fact has to be keyed per
+provider, and this registry is the only per-provider keying in the package.
+Anything added here that is not about claims should have the same defence.
 
 Everything is sourced from vendor documentation, not from the specification.
 """
@@ -47,6 +53,18 @@ class ProviderQuirks(ABC):
 
     #: Claim carrying group membership.
     groups_claim: str = "groups"
+
+    #: Exact paths, on the authorization endpoint's own origin, that this
+    #: provider redirects to once it has accepted a client id and redirect URI.
+    #:
+    #: Only for providers that answer a good authorization request with a 302
+    #: rather than a served form: there is no form in a redirect, so the markers
+    #: the classifier normally reads are absent and a correct deployment gets a
+    #: shrug. Exact paths rather than a prefix or a "looks like sign-in" rule,
+    #: because a provider's error page tends to live next door -- Google's is
+    #: /signin/oauth/error, one segment away from the real thing -- and a false
+    #: positive here reports a broken deployment as healthy.
+    sign_in_paths: tuple[str, ...] = ()
 
     @abstractmethod
     def subject(self, claims: Mapping[str, Any]) -> tuple[str, str]:
@@ -191,6 +209,11 @@ class GoogleQuirks(ProviderQuirks):
     """
 
     identifier = "google"
+
+    #: Versioned, and Google has moved it before -- ``/signin/v2/identifier``
+    #: preceded this one. When it moves again the verdict falls back to
+    #: inconclusive, which is the direction a stale entry should fail in.
+    sign_in_paths = ("/v3/signin/identifier",)
 
     def __init__(self, *, hosted_domain: str | None = None) -> None:
         self.hosted_domain = hosted_domain
