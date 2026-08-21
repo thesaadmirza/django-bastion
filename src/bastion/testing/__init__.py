@@ -13,7 +13,12 @@ testing.
         rig = harness()
         with rig.installed():
             response = rig.login(client, email_verified=False)
-        assert response.status_code == 403
+        # refused: the failure page rather than a redirect, and no session
+
+(Written without an ``assert`` on purpose. This package's lint refuses the
+statement anywhere under ``src/``, because ``python -O`` strips it and a
+security check written as one disappears silently -- and a grep cannot tell a
+docstring from a code path.)
 
 No certificate, no local HTTPS server, no CA bundle. ``Connection`` takes its
 transport as a field, so the fake is injected rather than served -- which is
