@@ -12,6 +12,32 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ### Added
 
+- **`manage.py bastion_access`** — who can reach the admin right now, and on
+  what basis. The artefact a compliance review asks for, over data the audit
+  chain already keeps.
+
+  The interesting rows are the ones with no basis. An account somebody ticked
+  `is_staff` on holds exactly what a group claim granted this morning, and only
+  one of them leaves a record; `--unexplained-only` narrows to those, and
+  `--json` makes the whole thing attachable to a review.
+
+  It refuses to conflate two things that look identical from a query. **No
+  grant record with a clean chain** means the flag was set directly. **No grant
+  record with a purged chain** means it may have been recorded and removed on
+  schedule — reporting the first there would accuse somebody of ticking a box
+  by hand on the strength of the retention policy doing its job.
+
+  A third case is reported separately and cannot be attached to anyone by
+  design: grants whose actor row was deleted for erasure. The events survive,
+  the link does not. Counting them is the difference between a report that has
+  accounted for every grant and one that quietly skipped some.
+
+  Accounts with no federated identity are called out, since those are the ones
+  that predate SSO — and an inactive admin is still listed, because switched
+  off is not the same as gone.
+
+### Added
+
 - **`manage.py bastion_link_preview`**, for seeing what
   `LINKING_POLICY = "verified_email_once"` would adopt before anyone signs in.
 
