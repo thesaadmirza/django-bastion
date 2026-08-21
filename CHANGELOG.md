@@ -10,7 +10,22 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a8.
+### Removed
+
+- **The `saml`, `ldap` and `scim` extras.** They were declared in the package
+  metadata and shipped no modules, so `pip install django-bastion[saml]` pulled
+  in pysaml2 and xmlsec, `[ldap]` built python-ldap from source against OpenLDAP
+  headers, and neither gave you anything to call. Reserving a name is not worth
+  putting a signature-handling library with its own vulnerability history into
+  the dependency tree of a package that cannot reach it.
+
+  They come back one at a time, each with an implementation and a live tenant
+  behind it. A test now refuses an extra that installs a library the package
+  never imports; empty extras like `[oidc]` are still fine, because they install
+  nothing and so promise nothing.
+
+  **If you install with one of these**, drop it: `pip install django-bastion`
+  installs exactly what it did before. Nothing that worked stops working.
 
 ## [0.0.1a8] - 2026-08-18
 
