@@ -19,11 +19,13 @@ BASTION = {
     "ADMIN": {...},
     "AUDIT": {...},
     "BREAK_GLASS": {...},
-    "MAPPING": {...},
-    "BACKEND": "bastion.backends.SSOBackend",
     "SUCCESS_URL": "/",
 }
 ```
+
+That is all of it. Every key is listed on this page, and a test holds the list
+still — see the [deprecation policy](deprecation-policy.md) for what a rename
+does and how long an old name keeps failing loudly.
 
 ## `IDENTITY`
 
@@ -105,6 +107,23 @@ One entry per provider. Keys map to `Connection` fields.
 | `require_s256` | `True` | Refuses a provider that advertises a PKCE method set **without** S256. A provider that advertises nothing is not refused: the field is optional under RFC 8414 and Entra omits it. Lower this only for a provider whose metadata understates it, and record why |
 | `store_id_token` | `False` | Keeps the compact ID token in the session so logout can send `id_token_hint`. Without it the provider may ask the person to confirm the sign-out, which Keycloak does. The cost is a credential in the session store, which is why it is opt-in |
 | `post_logout_redirect_uri` | `None` | Where the provider sends the browser after logout. **Must be registered at the provider.** Nothing is sent when unset, deliberately: an unregistered value makes the provider refuse the logout outright rather than fall back, so the provider's own confirmation page is the safer default |
+
+### Extension points
+
+Three more keys take objects rather than data. `settings.py` is Python, so they
+are reachable from a settings module that builds one — and they are how the
+package is driven from a test, where the fake provider is injected rather than
+served.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `transport` | `UrllibTransport()` | What performs discovery, JWKS and token requests. Replace it for a proxy, a pinned CA bundle, or a fake. Anything with `get_json` and `post_form` |
+| `transactions` | `CacheTransactionStore()` | Where the `state` record lives between the authorization request and the callback. The default is Django's cache, which with the per-process `LocMemCache` means a callback can land on a worker that has never heard of the transaction — use a shared cache with more than one worker |
+| `validation` | `ValidationPolicy()` | Clock skew tolerance and the rest of the token-validation policy |
+
+`bastion.testing` sets the first two, which is what lets an integration be
+tested with no certificate and no local HTTPS server. See
+[testing your integration](../how-to/testing-your-integration.md).
 
 ### Refused logins still create rows
 
@@ -249,5 +268,15 @@ worse than not having one.
 
 - `PIPELINE`, `USER_RESOLVER`, `USER_PROVISIONER`, `GROUP_RECONCILER` — arrive
   with the rule engine
-- `MAPPING["RULES"]` — the predicate tree, v0.2
+- `MAPPING`, including `STRICT`, `MANAGED_GROUPS` and the `RULES` predicate
+  tree — v0.2. Group-to-flag mapping in v0.1 is per-connection, through
+  `staff_groups` and `superuser_groups`
+- `ADMIN["reauth_max_age"]` — step-up re-authentication is not built
+- `BACKEND` — the backend is loaded from `AUTHENTICATION_BACKENDS`, and never
+  from here
 - `SCIM` — not built
+
+`MAPPING`, `ADMIN["reauth_max_age"]` and `BACKEND` were declared and read by
+nothing until recently, which is the failure this section's own rule exists to
+prevent: a deployment could set them and get silence. They are names now, not
+settings. See the [deprecation policy](deprecation-policy.md).
