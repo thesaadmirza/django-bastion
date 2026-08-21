@@ -82,7 +82,11 @@ def preview() -> list[Candidate]:
         federated_identities__isnull=True
     )
     for user in unlinked.only("email").iterator():
-        holders[user.email.lower()] = holders.get(user.email.lower(), 0) + 1
+        # getattr, because the user model is only AbstractBaseUser to a checker
+        # without the django-stubs plugin, and `email` is not on it. The rest
+        # of this package reads user attributes the same way.
+        address = str(getattr(user, "email", "") or "").lower()
+        holders[address] = holders.get(address, 0) + 1
 
     found: list[Candidate] = []
     for user in _accounts(user_model):
