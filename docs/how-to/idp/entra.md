@@ -88,10 +88,18 @@ BASTION = {
 }
 ```
 
-`expected_tenant` pins `tid`. For a single-tenant issuer the tenant is already
-in the URL, so this is belt and braces — but for the `/common` or
-`/organizations` endpoints it is the **only** thing stopping any Microsoft
-account in the world from authenticating.
+The issuer must name one tenant. `/common` and `/organizations` do not work
+here and cannot be made to: both serve a discovery document whose `issuer` is
+the literal string `https://login.microsoftonline.com/{tenantid}/v2.0`, and
+discovery refuses a document that declares an issuer other than the one it was
+fetched from. That refusal is deliberate — a templated issuer would leave every
+later `iss` check comparing against something that is not an issuer — and there
+is no setting that relaxes it. `/consumers` fails the same way, declaring the
+Microsoft-account tenant rather than itself.
+
+So `expected_tenant` pins `tid` against a tenant the issuer URL already names.
+Set it anyway. It costs nothing, and it is what fails the login if a token from
+the wrong tenant ever reaches the validator.
 
 Then:
 
