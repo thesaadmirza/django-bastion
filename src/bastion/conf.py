@@ -48,12 +48,16 @@ LOCAL_LOGIN_POLICIES = frozenset({"breakglass_only", "never", "elsewhere"})
 #: Code-level extension points and defaults only. Anything describing a
 #: *specific* identity provider belongs in the database.
 DEFAULTS: dict[str, Any] = {
-    # The auth backend is the customisation seam for now. The ordered pipeline
-    # and the separate resolver/provisioner/reconciler protocols arrive with
-    # the rule engine; declaring their settings
-    # before they exist would mean shipping a config surface that does nothing,
-    # which is worse than not having one.
-    "BACKEND": "bastion.backends.SSOBackend",
+    # Declaring a setting before the code that reads it means shipping a
+    # config surface that does nothing, which is worse than not having one.
+    # That rule is stated on the settings reference page, and four keys
+    # contradicted it: BACKEND, which the backend is never loaded from -- it
+    # comes from AUTHENTICATION_BACKENDS -- along with the two MAPPING keys and
+    # ADMIN["reauth_max_age"], all waiting on code that is not written. A
+    # deployment could set any of them and get silence.
+    #
+    # They are listed under "Not yet implemented" on that page now, which is
+    # where a reserved name belongs until something reads it.
     "SUCCESS_URL": "/",
     "IDENTITY": {
         # (issuer, subject). Never email. mozilla-django-oidc defaults to
@@ -79,12 +83,9 @@ DEFAULTS: dict[str, Any] = {
         "LINKABLE_EMAIL_DOMAINS": [],
         "REQUIRE_VERIFIED_EMAIL": True,
     },
-    # v0.1 maps groups to flags per connection via staff_groups and
-    # superuser_groups. The rule engine lands in v0.2 and takes this over.
-    "MAPPING": {
-        "STRICT": True,
-        "MANAGED_GROUPS": "prefix:sso-",
-    },
+    # No MAPPING. v0.1 maps groups to flags per connection, through
+    # staff_groups and superuser_groups; the rule engine that STRICT and
+    # MANAGED_GROUPS belong to lands in v0.2 and brings them with it.
     "ADMIN": {
         "enabled": True,
         "connection": None,
@@ -98,7 +99,8 @@ DEFAULTS: dict[str, Any] = {
         # claim arriving -- `bastion_doctor` says the same about the per-
         # connection flag.
         "require_mfa": False,
-        "reauth_max_age": 3600,
+        # No reauth_max_age. Step-up re-authentication is not built, and a
+        # timeout nothing enforces reads like a control that is on.
         # What a local password is allowed to be in this project, and the
         # answer bastion.E023 is asking for.
         #
