@@ -156,12 +156,15 @@ def check_backend_ordering(app_configs: Any, **kwargs: Any) -> list[CheckMessage
                 "bastion backend, and no password path is declared.",
                 hint=(
                     "This allows a local password to bypass SSO with no audit "
-                    "trail and no alerting. Remove the backend; or set "
-                    'BASTION["BREAK_GLASS"]["ENABLED"] = True with an allowlist, '
-                    "so the fallback is deliberate and monitored; or, if it "
-                    "serves a portal or an API rather than the admin, set "
+                    "trail and no alerting. In order of what most projects "
+                    "want: remove the backend; or, if it serves a portal or an "
+                    "API rather than the admin, set "
                     'BASTION["ADMIN"]["local_login"] = "elsewhere" to record '
-                    "that decision."
+                    "that decision. Only if you actually want an emergency "
+                    "credential route, enable break-glass with an allowlist "
+                    "and alerting -- it is an unauthenticated login endpoint, "
+                    "and turning it on to satisfy this check is the one reason "
+                    "not to."
                     + (
                         ' Break-glass is enabled, but local_login is "never", '
                         "which refuses a password backend regardless."
