@@ -123,6 +123,35 @@ def test_the_check_id_table_matches_the_checks() -> None:
     assert not documented - emitted, f"table lists absent checks: {sorted(documented - emitted)}"
 
 
+def test_the_provider_matrix_matches_the_registry() -> None:
+    """A profile with no row is one whose quirks a deployer meets during a
+    rollout instead of before it.
+
+    Both directions: an unlisted provider is undocumented, and a listed one
+    that no longer exists sends somebody to configure a name the loader will
+    refuse.
+    """
+    from bastion.protocols.oidc.quirks import REGISTRY
+
+    text = (DOCS / "reference/providers.md").read_text(encoding="utf-8")
+
+    # Only the verification table. The capability table below it has backticked
+    # claim names in the same column position, so matching the whole page reads
+    # `email_verified` as a provider.
+    heading = "## How far each profile has been proven"
+    assert heading in text, f"{heading!r} is where the per-provider rows live"
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+
+    documented = set(re.findall(r"^\| `([a-z][a-z0-9_]*)` \|", section, re.M))
+
+    assert not set(REGISTRY) - documented, (
+        f"providers in REGISTRY with no row: {sorted(set(REGISTRY) - documented)}"
+    )
+    assert not documented - set(REGISTRY), (
+        f"rows naming providers that are not registered: {sorted(documented - set(REGISTRY))}"
+    )
+
+
 def test_every_audit_event_is_in_the_catalogue() -> None:
     """Publishing the catalogue is the NIST AU-2 deliverable. An event the
     package emits but does not list makes that deliverable wrong."""
