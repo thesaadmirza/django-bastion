@@ -195,6 +195,59 @@ def test_the_changelog_has_a_section_for_this_version() -> None:
     assert f"## [{declared['project']['version']}]" in changelog
 
 
+#: Distribution names whose import name differs from the name on PyPI.
+_IMPORT_NAMES = {
+    "pysaml2": "saml2",
+    "python-ldap": "ldap",
+    "django-auth-ldap": "django_auth_ldap",
+    "psycopg": "psycopg",
+    "mysqlclient": "MySQLdb",
+}
+
+
+def test_every_extra_installs_something_the_package_can_call() -> None:
+    """An extra that pulls in a library nothing imports is a promise with no
+    code behind it.
+
+    `[saml]` installed pysaml2 and xmlsec, `[ldap]` built python-ldap from
+    source, and neither had a single import in the package: `pip install
+    django-bastion[saml]` put a signature-handling library with its own
+    vulnerability history into the dependency tree and gave you nothing to
+    call. Empty extras are fine -- `[oidc]` keeps an install line working --
+    because they install nothing and therefore promise nothing.
+    """
+    import re
+    import tomllib
+
+    extras = (
+        tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"].get(
+            "optional-dependencies"
+        )
+        or {}
+    )
+
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "src/bastion").rglob("*.py")
+    )
+
+    unbacked: dict[str, list[str]] = {}
+    for extra, requirements in extras.items():
+        missing = []
+        for requirement in requirements:
+            # "pysaml2>=6.5.0" -> "pysaml2"
+            distribution = re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].strip()
+            module = _IMPORT_NAMES.get(distribution, distribution.replace("-", "_"))
+            if not re.search(rf"^\s*(?:from|import)\s+{re.escape(module)}\b", source, re.M):
+                missing.append(distribution)
+        if missing:
+            unbacked[extra] = missing
+
+    assert not unbacked, (
+        f"extras installing libraries the package never imports: {unbacked}. "
+        "Add the implementation, or drop the extra until there is one."
+    )
+
+
 def _django_floor(*, mariadb: bool) -> tuple[int, ...]:
     """The minimum server version the installed Django enforces.
 
