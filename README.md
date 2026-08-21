@@ -118,6 +118,21 @@ account nobody knows works.
 that NIST AU-3, PCI 10.2.2 and ISO 27002 8.15 independently converge on, plus a gapless sequence number so
 an exported sample can be shown to be complete.
 
+**A fake provider, in the package.** Testing an SSO integration means producing assertions no real provider
+will produce on demand: an address the provider marks unverified, a group list truncated to a Graph
+pointer, a replayed `state`. `bastion.testing` ships a fake that does, with no certificate and no local
+HTTPS server — `Connection` takes its transport as a field, so the fake is injected rather than served.
+
+```python
+def test_an_unverified_address_is_refused(client):
+    rig = harness()
+    with rig.installed():
+        rig.login(client, email_verified=False)
+    assert SESSION_KEY not in client.session
+```
+
+[Testing your integration](docs/how-to/testing-your-integration.md) has the rest.
+
 ## Why you might not want this
 
 Worth reading before you adopt it.
