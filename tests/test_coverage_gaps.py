@@ -22,8 +22,8 @@ from bastion.connections import Connection
 from bastion.diagnostics import Status, check_connection
 from bastion.exceptions import ConfigurationError
 from bastion.protocols.oidc.transaction import MemoryTransactionStore
-from tests.idp.provider import FakeIdP
-from tests.idp.transport import FakeTransport
+from bastion.testing.provider import FakeIdP
+from bastion.testing.transport import FakeTransport
 from tests.test_login_flow import only_connections
 
 User = get_user_model()

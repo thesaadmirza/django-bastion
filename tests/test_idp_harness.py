@@ -21,9 +21,9 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
+from bastion.testing.keys import SigningKey
+from bastion.testing.provider import FakeIdP
 from tests.idp import tokens
-from tests.idp.keys import SigningKey
-from tests.idp.provider import FakeIdP
 
 
 def verify_rs256(token: str, key: SigningKey) -> bool:

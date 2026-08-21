@@ -27,8 +27,8 @@ from bastion.exceptions import (
 )
 from bastion.protocols.oidc.jose import verify_compact
 from bastion.protocols.oidc.jwks import JWKSStore, jwk_to_public_key
+from bastion.testing.keys import SigningKey, generate_key
 from tests.idp import tokens
-from tests.idp.keys import SigningKey, generate_key
 
 
 def b64u(raw: bytes) -> str:

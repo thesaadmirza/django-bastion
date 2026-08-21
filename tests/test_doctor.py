@@ -19,8 +19,8 @@ from django.test import override_settings
 from bastion.connections import Connection
 from bastion.diagnostics import Status, check_connection, check_project
 from bastion.protocols.oidc.transaction import MemoryTransactionStore
-from tests.idp.provider import FakeIdP
-from tests.idp.transport import FakeTransport
+from bastion.testing.provider import FakeIdP
+from bastion.testing.transport import FakeTransport
 
 # The project checks query break-glass accounts, so the whole module needs a
 # database now.

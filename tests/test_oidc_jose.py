@@ -22,9 +22,9 @@ from bastion.exceptions import (
     UntrustedKeyMaterial,
 )
 from bastion.protocols.oidc import parse_header, verify_compact
+from bastion.testing.keys import SigningKey
+from bastion.testing.provider import FakeIdP
 from tests.idp import tokens
-from tests.idp.keys import SigningKey
-from tests.idp.provider import FakeIdP
 
 
 class RecordingResolver:

@@ -25,9 +25,9 @@ from bastion.claims import IdentityClaims, Verified
 from bastion.connections import Connection
 from bastion.exceptions import TokenError
 from bastion.flows import _check_email_verification
+from bastion.testing.provider import FakeIdP
+from bastion.testing.transport import FakeTransport
 from bastion.views import SESSION_MFA_KEY
-from tests.idp.provider import FakeIdP
-from tests.idp.transport import FakeTransport
 from tests.test_login_flow import login, make_connection, only_connections
 
 pytestmark = pytest.mark.django_db
