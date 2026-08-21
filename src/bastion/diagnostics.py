@@ -232,6 +232,7 @@ def _registration_check(connection: Connection, metadata: Any, callback_url: str
         authorization_endpoint=metadata.authorization_endpoint,
         client_id=connection.client_id,
         redirect_uri=callback_url,
+        sign_in_paths=connection.quirks.sign_in_paths,
     )
 
     status, hint = {

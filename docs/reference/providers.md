@@ -31,8 +31,20 @@ first person to run it will find out.
 | `email_verified` | **absent**, `xms_edov` instead | yes | yes | yes | if sent |
 | Tenant boundary | `tid` | `hd` | none | none | none |
 | RFC 9207 `iss` | **not advertised** | advertised | depends | depends | depends |
+| How `--check-registration` sees success | served form | sign-in redirect | unproven | unproven | served form |
 
 The bold entries are the ones that change what you can build.
+
+**The registration probe reports success only on positive evidence.** Three things count: a redirect
+back to your own callback URL, a sign-in form in the response body, or a redirect to a sign-in path
+the provider's profile names. Nothing counts as success for the absence of an error.
+
+That last route exists because Google serves no form. It answers a good authorization request with a
+302 to `/v3/signin/identifier`, so there is no HTML to read and every correctly registered URI was
+reported inconclusive. The path is versioned and Google has moved it before; when it moves again the
+verdict returns to inconclusive rather than becoming wrong. Okta and Keycloak are unproven here for
+the same reason their rows above say so — nobody has run the probe against one and recorded what
+came back.
 
 ## The three that cost the most time
 

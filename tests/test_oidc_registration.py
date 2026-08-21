@@ -19,6 +19,8 @@ from bastion.protocols.oidc.registration import (
 )
 
 CALLBACK = "https://admin.example.com/sso/callback/"
+GOOGLE_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_SIGN_IN = ("/v3/signin/identifier",)
 
 
 def verdict(**kwargs: object) -> Registration:
@@ -29,6 +31,16 @@ def verdict(**kwargs: object) -> Registration:
         "redirect_uri": CALLBACK,
     }
     return classify(**{**defaults, **kwargs}).verdict  # type: ignore[arg-type]
+
+
+def google(**kwargs: object) -> Registration:
+    """A Google-shaped call, with anything overridable the same way."""
+    defaults: dict[str, object] = {
+        "status": 302,
+        "authorization_endpoint": GOOGLE_AUTHORIZE,
+        "sign_in_paths": GOOGLE_SIGN_IN,
+    }
+    return verdict(**{**defaults, **kwargs})
 
 
 class TestPositiveProof:
@@ -48,6 +60,82 @@ class TestPositiveProof:
     def test_a_sign_in_page_counts(self) -> None:
         body = '<form><input name="loginfmt" type="email"></form>'
         assert verdict(body=body) is Registration.REGISTERED
+
+
+class TestSignInRedirect:
+    """Providers that redirect to their sign-in page instead of serving it.
+
+    Google is the one that motivated this: a correctly registered redirect URI
+    got a 302 with no form in it, so none of the HTML markers matched and every
+    healthy deployment was reported inconclusive.
+    """
+
+    def test_the_sign_in_redirect_is_positive_proof(self) -> None:
+        assert (
+            google(location="https://accounts.google.com/v3/signin/identifier?flowName=Gen")
+            is Registration.REGISTERED
+        )
+
+    @pytest.mark.parametrize(
+        ("case", "location"),
+        [
+            # The trap in the whole approach: Google's error page is the same
+            # host and its path also contains "signin", so anything looser than
+            # exact membership reads a refused client as a healthy one. Neither
+            # of these carries a readable error -- 'abc' base64-decodes to two
+            # junk bytes -- so the path rule is what has to answer, rather than
+            # _RULES catching them first.
+            ("error_page_next_door", "https://accounts.google.com/signin/oauth/error"),
+            (
+                "with_an_undecodable_error",
+                "https://accounts.google.com/signin/oauth/error?authError=abc",
+            ),
+            ("lookalike_host", "https://accounts.google.com.attacker.test/v3/signin/identifier"),
+            ("downgraded_scheme", "http://accounts.google.com/v3/signin/identifier"),
+            ("dot_segments", "https://accounts.google.com/v3/signin/identifier/../oauth/error"),
+            ("trailing_slash", "https://accounts.google.com/v3/signin/identifier/"),
+        ],
+    )
+    def test_what_is_not_proof(self, case: str, location: str) -> None:
+        assert google(location=location) is Registration.INCONCLUSIVE
+
+    def test_a_provider_with_no_characterised_paths_still_shrugs(self) -> None:
+        """An empty profile must inherit nothing. A provider nobody has
+        characterised keeps answering inconclusive rather than borrowing
+        Google's paths."""
+        assert (
+            google(
+                location="https://provider.test/v3/signin/identifier",
+                authorization_endpoint="https://provider.test/authorize",
+                sign_in_paths=(),
+            )
+            is Registration.INCONCLUSIVE
+        )
+
+    def test_a_relative_redirect_with_no_endpoint_known_is_not_proof(self) -> None:
+        """A relative Location and an empty authorization_endpoint both split
+        into an empty scheme and netloc, so the origin comparison would pass by
+        matching nothing against nothing.
+
+        Unreachable through this package -- build_authorize_url runs
+        require_https first -- but classify is public and pure, and a direct
+        caller who omits the endpoint should get a shrug rather than a pass.
+        """
+        assert (
+            google(location="/v3/signin/identifier", authorization_endpoint="")
+            is Registration.INCONCLUSIVE
+        )
+
+    def test_an_error_in_the_body_still_wins(self) -> None:
+        """Ordering: a redirect to a real sign-in path alongside a named error
+        is the error. Positive evidence never overrides an explicit refusal."""
+        assert (
+            google(
+                location="https://accounts.google.com/v3/signin/identifier",
+                body='{"error":"redirect_uri_mismatch"}',
+            )
+            is Registration.NOT_REGISTERED
+        )
 
 
 class TestNegativeProof:
@@ -127,6 +215,16 @@ class TestRefusingToGuess:
 
     def test_a_different_path_on_our_host_does_not_count(self) -> None:
         location = "https://admin.example.com/somewhere-else/?code=abc"
+        assert verdict(status=302, location=location) is Registration.INCONCLUSIVE
+
+    def test_a_downgraded_scheme_does_not_count(self) -> None:
+        """Same host, same path, http rather than https.
+
+        Reaching a plain-http callback says nothing about whether the https one
+        under test is registered, and a deployment behind a terminating proxy
+        can have both spellings in play.
+        """
+        location = "http://admin.example.com/sso/callback/?code=abc"
         assert verdict(status=302, location=location) is Registration.INCONCLUSIVE
 
     def test_a_relative_location_is_resolved_before_comparing(self) -> None:
