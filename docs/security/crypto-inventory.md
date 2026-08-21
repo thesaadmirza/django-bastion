@@ -13,7 +13,7 @@ since that review.
 | All asymmetric signature verification | `cryptography` | The only cryptographic dependency on the OIDC path |
 | Hashing, HMAC, random | Python standard library (`hashlib`, `hmac`, `secrets`) | |
 | Session and signing infrastructure | Django | `SECRET_KEY`-derived |
-| SAML (optional extra) | `pysaml2`, and `xmlsec1` beneath it | Not yet implemented |
+| SAML | none | Not implemented, and no longer declared as an extra. When it lands it brings `pysaml2` and `xmlsec1`, and this row changes with the code rather than ahead of it |
 
 There is deliberately **no JOSE or OAuth library**. Every policy decision such a
 library would make on our behalf is one this package overrides — algorithm

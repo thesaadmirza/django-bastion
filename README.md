@@ -64,12 +64,16 @@ $ python manage.py bastion_doctor
 document, the JWKS and the signing algorithms, compares your clock against theirs, and works through the
 local half from the session engine to whether break-glass has anyone to alert.
 
-Three things it will not tell you are fine. Whether the redirect URI is actually registered at the
-provider, whether the group claim is emitted and in what shape, and whether MFA will really be asserted:
-none of those can be known without a person completing a real login, so they come back marked unverifiable
-with the reason attached. A run that quietly skipped them would read better and help less. Most SSO
-debugging is a config typo three layers down, and a green tick over an unasked question is how you lose an
-afternoon to it.
+Add `--check-registration` and it also asks the provider whether your callback URL is registered — one
+authorization request, no client secret, no token, because the flow is abandoned before the code is
+exchanged. `redirect_uri_mismatch` is the most common way an integration fails and the hardest to see from
+inside the app, where the settings are right and the provider still refuses.
+
+Two things it still will not tell you are fine: whether the group claim is emitted and in what shape, and
+whether MFA will really be asserted. Neither can be known without a person completing a real login, so
+they come back marked unverifiable with the reason attached. A run that quietly skipped them would read
+better and help less. Most SSO debugging is a config typo three layers down, and a green tick over an
+unasked question is how you lose an afternoon to it.
 
 That is the entire happy path. Everything below is optional.
 
@@ -81,11 +85,17 @@ Working around that is a known source of redirect loops and of the "authenticate
 We subclass `AdminSite` (the documented seam) and fail with a real 403 page that tells the person which
 group they're missing and who to ask.
 
-**Claims map to roles, and in 0.1 that mapping is deliberately small.** Two lists per connection,
-`staff_groups` and `superuser_groups`, matched against the group claim. That is all of it. The ordered rule
-engine with a serializable condition tree is the 0.2 design and is not built yet;
-[the roadmap](docs/explanation/roadmap.md) says what it will look like and which two approaches were
-already rejected.
+**Groups map to roles, where your provider sends groups.** Two lists per connection, `staff_groups` and
+`superuser_groups`, matched against the group claim. That is all of it. The ordered rule engine with a
+serializable condition tree is the 0.2 design and is not built yet; [the
+roadmap](docs/explanation/roadmap.md) says what it will look like and which two approaches were already
+rejected.
+
+The qualifier is load-bearing. **Google's ID token carries no group claim at all**, so on a Google
+connection those two lists cannot match anything and roles are assigned locally instead. That is not a
+bug to be fixed by configuration, and finding it out after wiring everything up is the reason
+[the provider matrix](docs/reference/providers.md) exists — it says what each profile gives you, and how
+far each has actually been proven.
 
 **An answer for the admins you already have.** Keying accounts on `(issuer, subject)` and never on
 email is the right default and it strands every existing administrator behind a second account on their
@@ -132,9 +142,9 @@ MariaDB all pass the full test suite on every push. Oracle is not supported.
 [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md) has the versions each backend was actually run against, and the
 version-dropping policy.
 
-There is a `[saml]` extra, and installing it today gets you pysaml2 and nothing else, because the SAML
-implementation does not exist yet. The extra is reserved so the install line will not change on the day it
-does, and it stays optional because pysaml2 pulls in xmlsec, which needs system packages.
+There are no `[saml]`, `[ldap]` or `[scim]` extras. They were declared and shipped no modules, so
+installing one pulled in a protocol stack you had nothing to call. They come back one at a time, each with
+an implementation and a live tenant behind it.
 
 ## Documentation
 

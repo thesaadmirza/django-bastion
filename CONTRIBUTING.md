@@ -50,11 +50,10 @@ pip install -e . --group dev
 pytest
 ```
 
-Two notes on the optional extras, neither of which the test suite needs:
-`[ldap]` pulls in python-ldap, which builds from source and wants OpenLDAP
-headers (`libldap2-dev` and `libsasl2-dev` on Debian), and `[saml]` pulls in
-pysaml2, which wants xmlsec. `uv sync` without extras avoids both. `[oidc]` is
-empty on purpose — OIDC support is in the base install.
+There is one extra, `[oidc]`, and it is empty on purpose — OIDC support is in
+the base install, and the name is kept so an install line that already says it
+keeps working. Nothing needs a system package to build; `pip install -e .` is
+the whole story.
 
 ## Before opening a pull request
 

@@ -3,13 +3,38 @@
 This page is written before the code it describes, on purpose. It is the document a security team will
 read first, and the out-of-scope section at the bottom is what makes the rest of it believable.
 
-Last reviewed: 2026-07-27. Reviewed at every minor release.
+Last reviewed: 2026-08-21. Reviewed at every minor release.
 
 ## What this package is
 
-A governance layer above a protocol implementation. Signature verification, XML canonicalization and JOSE
-primitives are delegated to authlib, pysaml2 and python-ldap. We assert their configuration, re-check
-their output structurally, and own everything that happens after an assertion validates.
+Two things, and the second is the one to read hardest.
+
+A **governance layer**: who gets an account, what privileges a claim may grant, what reaches the audit
+chain, what happens when the provider says something unexpected.
+
+And an **OIDC relying party implemented here**, not taken from a library. `protocols/oidc` owns compact
+JWS verification — token parsing, the algorithm allowlist, key selection from discovery-derived JWKS, and
+the order those happen in. Only the primitives underneath, signature verification and hashing, come from
+[`cryptography`](https://cryptography.io/). The entire runtime dependency list is Django and
+`cryptography`; there is no JOSE library behind this.
+
+That is a deliberate choice and it is the right thing for a reviewer to be suspicious of. The reasoning
+is in `src/bastion/protocols/oidc/jose.py`, and the failure modes it is written against — `alg: none`,
+algorithm confusion, key injection through `jwk`/`jku`/`x5c` — are in the table below. **If you audit one
+file in this package, audit that one.**
+
+An earlier version of this page named authlib, pysaml2 and python-ldap as the code performing signature
+verification. None of the three has ever been imported here, and one was never a dependency at all. That
+told a reviewer the cryptography was somebody else's audited library while this package carried its own
+JWS verifier — flattery aimed at exactly the reader this document exists for. It is recorded rather than
+quietly deleted, and a test now refuses a security page that credits a library the package does not
+depend on.
+
+### What this package is not
+
+There is **no SAML, LDAP or SCIM code**. They are on the roadmap; none of them exists. Nothing here
+defends XML signature wrapping, entity expansion, or directory binding, because there is nothing to
+defend — and an earlier version of this page claimed controls for all three.
 
 That division matters for reading this document: some controls below are ours to enforce, some belong to
 a library we configure, and some belong to whoever deploys us. Each one says which.
@@ -45,35 +70,35 @@ fourth edge and the sections below grow with it.
 
 ## Threats, by boundary
 
-Each threat below is backed by a test in the adversarial corpus under `tests/`, which mints the malformed
-token or forged request directly rather than relying on a library to refuse to build one.
+Most threats below are backed by a test that mints the malformed token or forged request directly, rather
+than relying on a library to refuse to build one — `tests/test_oidc_jose.py`, `test_oidc_validation.py`
+and `test_oidc_transaction.py` are where those live. Rows that say **not enforced** have no test because
+they have no control; they are listed so the gap is visible rather than absent.
 
 ### Browser to app
 
 | Threat | Control | Enforced by |
 |---|---|---|
 | Session fixation across the SSO round trip | Pre-auth session is explicitly flushed before `login()`. Django's `login()` only calls `cycle_key()` when no session key is present, so re-login as the same user rotates nothing | us |
-| Open redirect via `next` or `RelayState` | `url_has_allowed_host_and_scheme` with an explicit allowlist. `RelayState` is an opaque server-side lookup key, never a URL | us |
+| Open redirect via `next` | `url_has_allowed_host_and_scheme` with an explicit allowlist. (`RelayState` is a SAML parameter and there is no SAML code; an earlier version of this row claimed a control for it) | us |
 | Callback CSRF | Single-use `state`, at least 128 bits, in a server-side transaction record | us |
-| Trusted-proxy header spoofing | Refuses to start without both a CIDR allowlist and a shared secret or mTLS. Note `X-Auth-User` and `X-Auth_User` normalise to the same key | us, but see below |
+| Trusted-proxy header spoofing | **Not enforced.** `bastion_doctor` warns when `SECURE_PROXY_SSL_HEADER` is unset or looks wrong, and nothing refuses to start. An earlier version of this page claimed a startup refusal requiring a CIDR allowlist and a shared secret; no such check exists. Django reads the scheme from whatever header you name, and any client that can reach the app can set it unless the proxy strips it | you, at the proxy |
 
 ### App to IdP
 
 | Threat | Control | Enforced by |
 |---|---|---|
-| `alg: none`, algorithm confusion, key injection via `jwk`/`jku`/`x5c` | Asymmetric-only allowlist; keys resolved solely from discovery-derived JWKS; header key parameters stripped | us |
-| XML signature wrapping | Identity re-extracted from the signed subtree, and the signed element's identity asserted to match the assertion we consume | us |
-| Assertion replay | Shared, durable replay cache with atomic insert-or-fail, consulted before any user lookup | us |
-| Unsigned assertion accepted | Startup refuses pysaml2's `want_assertions_signed=False` default, which ships insecure while its own metadata advertises otherwise | us, asserting the library |
-| XXE and entity expansion | DTDs, external entities and network access disabled; size and depth capped | us and the library |
-| IdP mix-up | RFC 9207 `iss` checked, plus a distinct `redirect_uri` per issuer | us |
+| `alg: none`, algorithm confusion, key injection via `jwk`/`jku`/`x5c` | Asymmetric-only allowlist; keys resolved solely from discovery-derived JWKS; header key parameters ignored. This is our code, in `jose.py` | us |
+| Authorization code replay | `state` is single-use. The record is deleted on the callback, so a later replay finds nothing (`TransactionNotFound`); two callbacks racing are separated by the delete, and the loser gets `TransactionReplayed`. Durability is the cache backend's: the default `LocMemCache` is per-process, which is a correctness problem before it is a security one — use a shared cache with more than one worker | us, given a shared cache |
+| IdP mix-up | RFC 9207 `iss` is checked when present, and refused when it names another issuer. **Entra does not emit it**, so absent is tolerated, and a deployment with several providers behind one callback leans on `state` alone. There is no per-issuer `redirect_uri`; an earlier version of this page claimed one | us, partly |
+| XML signature wrapping, XXE, entity expansion, unsigned assertions | **No control, because there is no SAML.** Earlier versions of this page claimed all four | — |
 
 ### Authorization
 
 | Threat | Control |
 |---|---|
 | Account takeover via mutable identifiers | Accounts key on `(issuer, subject)`. Email is never the join key |
-| Privilege escalation from a truncated group list | `groups_complete=False` blocks any privilege-escalating effect while still permitting login. Entra silently truncates above 150 groups; Okta caps at 100 |
+| Privilege escalation from a truncated group list | An incomplete group list blocks any privilege-escalating effect while still permitting login. Above roughly 200 groups in a JWT, Entra sends a pointer to Microsoft Graph instead of the list; above 100, Okta errors on the filter rather than sending an overage claim, which arrives looking like a user in no groups. (150 is Entra's SAML threshold, which this package never sees) |
 | Claims granting superuser directly | Structurally impossible. Claims map to Groups whose permissions are locally owned |
 | Stale privileges after IdP-side removal | Deny-by-default re-evaluation on every login |
 

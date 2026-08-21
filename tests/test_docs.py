@@ -123,6 +123,35 @@ def test_the_check_id_table_matches_the_checks() -> None:
     assert not documented - emitted, f"table lists absent checks: {sorted(documented - emitted)}"
 
 
+def test_the_provider_matrix_matches_the_registry() -> None:
+    """A profile with no row is one whose quirks a deployer meets during a
+    rollout instead of before it.
+
+    Both directions: an unlisted provider is undocumented, and a listed one
+    that no longer exists sends somebody to configure a name the loader will
+    refuse.
+    """
+    from bastion.protocols.oidc.quirks import REGISTRY
+
+    text = (DOCS / "reference/providers.md").read_text(encoding="utf-8")
+
+    # Only the verification table. The capability table below it has backticked
+    # claim names in the same column position, so matching the whole page reads
+    # `email_verified` as a provider.
+    heading = "## How far each profile has been proven"
+    assert heading in text, f"{heading!r} is where the per-provider rows live"
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+
+    documented = set(re.findall(r"^\| `([a-z][a-z0-9_]*)` \|", section, re.M))
+
+    assert not set(REGISTRY) - documented, (
+        f"providers in REGISTRY with no row: {sorted(set(REGISTRY) - documented)}"
+    )
+    assert not documented - set(REGISTRY), (
+        f"rows naming providers that are not registered: {sorted(documented - set(REGISTRY))}"
+    )
+
+
 def test_every_audit_event_is_in_the_catalogue() -> None:
     """Publishing the catalogue is the NIST AU-2 deliverable. An event the
     package emits but does not list makes that deliverable wrong."""
@@ -193,6 +222,101 @@ def test_the_changelog_has_a_section_for_this_version() -> None:
     declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert f"## [{declared['project']['version']}]" in changelog
+
+
+#: Distribution names whose import name differs from the name on PyPI.
+_IMPORT_NAMES = {
+    "pysaml2": "saml2",
+    "python-ldap": "ldap",
+    "django-auth-ldap": "django_auth_ldap",
+    "psycopg": "psycopg",
+    "mysqlclient": "MySQLdb",
+}
+
+
+def test_every_extra_installs_something_the_package_can_call() -> None:
+    """An extra that pulls in a library nothing imports is a promise with no
+    code behind it.
+
+    `[saml]` installed pysaml2 and xmlsec, `[ldap]` built python-ldap from
+    source, and neither had a single import in the package: `pip install
+    django-bastion[saml]` put a signature-handling library with its own
+    vulnerability history into the dependency tree and gave you nothing to
+    call. Empty extras are fine -- `[oidc]` keeps an install line working --
+    because they install nothing and therefore promise nothing.
+    """
+    import re
+    import tomllib
+
+    extras = (
+        tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"].get(
+            "optional-dependencies"
+        )
+        or {}
+    )
+
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (ROOT / "src/bastion").rglob("*.py")
+    )
+
+    unbacked: dict[str, list[str]] = {}
+    for extra, requirements in extras.items():
+        missing = []
+        for requirement in requirements:
+            # "pysaml2>=6.5.0" -> "pysaml2"
+            distribution = re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].strip()
+            module = _IMPORT_NAMES.get(distribution, distribution.replace("-", "_"))
+            if not re.search(rf"^\s*(?:from|import)\s+{re.escape(module)}\b", source, re.M):
+                missing.append(distribution)
+        if missing:
+            unbacked[extra] = missing
+
+    assert not unbacked, (
+        f"extras installing libraries the package never imports: {unbacked}. "
+        "Add the implementation, or drop the extra until there is one."
+    )
+
+
+#: Libraries a security page must not credit unless they are actually here.
+#: The threat model said signature verification was "delegated to authlib,
+#: pysaml2 and python-ldap". None was ever imported and one was never even a
+#: dependency, so the page told a reviewer the crypto was someone else's
+#: audited code while the package carried a hand-rolled JWS verifier.
+_LIBRARIES_THAT_MUST_BE_REAL = ("authlib", "pysaml2", "python-ldap", "xmlsec", "lxml", "joserfc")
+
+
+@pytest.mark.parametrize("page", ["security/threat-model.md", "security/crypto-inventory.md"])
+def test_no_security_page_credits_a_library_we_do_not_have(page: str) -> None:
+    """Naming a library you do not depend on transfers its reputation to code
+    that never runs it.
+
+    Mentioning one is fine -- saying what is *not* used is useful, and the
+    threat model does exactly that. What is refused is crediting it: naming it
+    as the thing that performs a control.
+    """
+    import re
+    import tomllib
+
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    dependencies = " ".join(declared["dependencies"])
+    for group in (declared.get("optional-dependencies") or {}).values():
+        dependencies += " " + " ".join(group)
+
+    text = (DOCS / page).read_text(encoding="utf-8")
+    credited = []
+    for library in _LIBRARIES_THAT_MUST_BE_REAL:
+        if library in dependencies:
+            continue
+        # "delegated to authlib", "verified by pysaml2", "uses lxml"
+        credits = r"(?:delegated to|handled by|verified by|performed by|uses|via)"
+        pattern = rf"{credits}\s+[^.]*\b{re.escape(library)}\b"
+        if re.search(pattern, text, re.I):
+            credited.append(library)
+
+    assert not credited, (
+        f"{page} credits libraries this package does not depend on: {credited}. "
+        "Say what the code actually does, or add the dependency."
+    )
 
 
 def _django_floor(*, mariadb: bool) -> tuple[int, ...]:

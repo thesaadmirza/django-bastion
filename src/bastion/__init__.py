@@ -1,10 +1,21 @@
 """django-bastion: enterprise SSO and identity governance for Django.
 
-This package is the governance layer above a protocol implementation, not a
-protocol implementation itself. Signature verification, canonicalization and
-JOSE primitives are delegated to authlib, pysaml2 and python-ldap. Our job is
-to assert their configuration, re-check their output structurally, and own
-everything that happens after an assertion validates.
+Two things, and the second one is the part a reviewer should look at hardest.
+
+A governance layer: who gets an account, what privileges a claim may grant,
+what is written to the audit chain, and what happens when the provider says
+something unexpected.
+
+And an OIDC relying party, implemented here rather than taken from a library.
+``protocols/oidc`` owns compact JWS verification: token parsing, the algorithm
+allowlist, key selection from discovery-derived JWKS, and the order those
+happen in. Only the primitives underneath -- signature verification, hashing --
+come from ``cryptography``. There is no JOSE library in the dependency tree;
+see ``protocols/oidc/jose.py`` for what that module does and why.
+
+No SAML, LDAP or SCIM. Those are on the roadmap and none of the code exists,
+so nothing here defends the assertion-parsing or directory-binding attack
+surface that comes with them.
 
 See docs/security/threat-model.md for what this package does and does not
 defend against.

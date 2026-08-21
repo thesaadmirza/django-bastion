@@ -34,7 +34,10 @@ rules that group-to-role mapping needs.
 
 ## v0.3 — SAML
 
-Behind the `[saml]` extra, since it pulls in xmlsec and its system packages.
+Behind a `[saml]` extra, added when the adapter is, since it pulls in xmlsec
+and its system packages. The extra is not declared before then: one that
+installs a dependency you have nothing to call is a promise with no code
+behind it.
 
 Gated on one piece of research: whether lxml, xmlsec1 and pysaml2 exhibit the
 parser-differential behaviour PortSwigger demonstrated against Ruby and PHP

@@ -10,7 +10,98 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.0.1a8.
+### Removed
+
+- **The `saml`, `ldap` and `scim` extras.** They were declared in the package
+  metadata and shipped no modules, so `pip install django-bastion[saml]` pulled
+  in pysaml2 and xmlsec, `[ldap]` built python-ldap from source against OpenLDAP
+  headers, and neither gave you anything to call. Reserving a name is not worth
+  putting a signature-handling library with its own vulnerability history into
+  the dependency tree of a package that cannot reach it.
+
+  They come back one at a time, each with an implementation and a live tenant
+  behind it. A test now refuses an extra that installs a library the package
+  never imports; empty extras like `[oidc]` are still fine, because they install
+  nothing and so promise nothing.
+
+  **If you install with one of these**, drop it: `pip install django-bastion`
+  installs exactly what it did before. Nothing that worked stops working.
+
+### Added
+
+- **`bastion_doctor --check-registration` asks the provider whether your
+  callback URL is registered.** `redirect_uri_mismatch` is the most common way
+  an OIDC integration fails and the hardest to see from inside the application:
+  the settings are right, the URL is right, and the provider still refuses.
+  Nothing local can tell you whether a console edit propagated or landed on a
+  different client.
+
+  One authorization request answers it. No client secret is used and no token
+  is issued, because the flow is abandoned before the code is exchanged, and
+  the `state`, `nonce` and PKCE verifier are generated for the request and
+  thrown away — no transaction record exists, so there is nothing for a later
+  callback to replay. Off by default: it is the only check here that appears in
+  the provider's logs.
+
+  It asks about the same URL the report prints, from one derivation rather than
+  two, and refuses to run at all when no concrete host is knowable — asking
+  about a URL the deployment would never send is worse than not asking.
+
+  The classifier reports *inconclusive* rather than passing when it cannot read
+  the answer. That distinction is the point: Entra replies to a bad client id
+  with HTTP 200 and an HTML page carrying no OAuth error parameter, so treating
+  "no error seen" as success reported a broken deployment as healthy.
+
+- **A provider matrix**, at [docs/reference/providers.md](docs/reference/providers.md). Five profiles
+  ship and they are not equally proven: `entra` has been run against Microsoft's
+  live endpoints and a real tenant, `google` has had its public discovery
+  document read and no sign-in driven through it, and `okta`, `keycloak` and
+  `generic` are written from the specification. The page says which is which,
+  because "from the specification" means the failure mode is undiscovered
+  rather than absent.
+
+  It also collects the per-provider gaps that otherwise turn up one at a time
+  mid-rollout: no group claim and no `end_session_endpoint` on Google, no
+  `groups` by default and no truncation signal on Okta, no `email_verified` and
+  no RFC 9207 `iss` on Entra. A test keeps the matrix and the registry in step
+  in both directions.
+
+### Fixed
+
+- **The summary line promised role mapping the package cannot always do.** It
+  said "claims-to-role mapping" with no qualifier, while `staff_groups` and
+  `superuser_groups` cannot match anything on Google: the ID token carries no
+  group claim, so a Google connection authenticates people and never grants
+  staff. Nothing was broken — group evidence that does not exist is correctly
+  treated as incomplete rather than empty, which blocks escalation instead of
+  stripping privileges — but a deployer found this out after wiring everything
+  up. The summary, the README and the two settings rows now name the
+  dependency.
+
+- **The threat model described a different package.** It said signature
+  verification and JOSE primitives were the work of authlib, pysaml2 and
+  python-ldap. None of the three has ever been imported here, and one was never
+  a dependency — the runtime list is Django and `cryptography`, and
+  `protocols/oidc` carries its own compact JWS verifier. The page told a
+  security reviewer the cryptography was somebody else's audited library, which
+  is the opposite of what they need to know before adopting this.
+
+  Four rows claimed controls that need SAML code to exist: XML signature
+  wrapping, XXE, entity expansion, unsigned assertions. One claimed a startup
+  refusal for trusted-proxy headers, where only a doctor warning exists. One
+  claimed a distinct `redirect_uri` per issuer, where there is one callback
+  path.
+
+  Three more were true but overstated, and are now stated as they are: replay
+  protection is `state` single-use whose durability belongs to the cache
+  backend, the JWT group-overage threshold is about 200 rather than 150, and
+  the "adversarial corpus" is three named test modules.
+
+  Every correction is recorded on the page rather than quietly applied — a
+  security document that has been wrong should say so, because the reader is
+  deciding whether to trust the rest of it. A test now refuses a security page
+  that credits a library the package does not depend on. The same false
+  sentence was in the package docstring, and is fixed there too.
 
 ## [0.0.1a8] - 2026-08-18
 
