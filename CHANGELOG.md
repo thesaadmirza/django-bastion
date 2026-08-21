@@ -27,6 +27,33 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   **If you install with one of these**, drop it: `pip install django-bastion`
   installs exactly what it did before. Nothing that worked stops working.
 
+### Fixed
+
+- **The threat model described a different package.** It said signature
+  verification and JOSE primitives were the work of authlib, pysaml2 and
+  python-ldap. None of the three has ever been imported here, and one was never
+  a dependency — the runtime list is Django and `cryptography`, and
+  `protocols/oidc` carries its own compact JWS verifier. The page told a
+  security reviewer the cryptography was somebody else's audited library, which
+  is the opposite of what they need to know before adopting this.
+
+  Four rows claimed controls that need SAML code to exist: XML signature
+  wrapping, XXE, entity expansion, unsigned assertions. One claimed a startup
+  refusal for trusted-proxy headers, where only a doctor warning exists. One
+  claimed a distinct `redirect_uri` per issuer, where there is one callback
+  path.
+
+  Three more were true but overstated, and are now stated as they are: replay
+  protection is `state` single-use whose durability belongs to the cache
+  backend, the JWT group-overage threshold is about 200 rather than 150, and
+  the "adversarial corpus" is three named test modules.
+
+  Every correction is recorded on the page rather than quietly applied — a
+  security document that has been wrong should say so, because the reader is
+  deciding whether to trust the rest of it. A test now refuses a security page
+  that credits a library the package does not depend on. The same false
+  sentence was in the package docstring, and is fixed there too.
+
 ## [0.0.1a8] - 2026-08-18
 
 Eleven reports from a deployment that put this in front of a real admin, worked
