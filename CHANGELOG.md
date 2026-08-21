@@ -10,6 +10,36 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+### Added
+
+- **`manage.py bastion_link_preview`**, for seeing what
+  `LINKING_POLICY = "verified_email_once"` would adopt before anyone signs in.
+
+  Adoption is the step an administrator is most nervous about and it happens
+  invisibly, at somebody's first sign-in. This walks the local user table and
+  says per account what would happen: adopted, ambiguous because two accounts
+  share an address, or skipped with the reason. Privileged accounts sort first,
+  because they are what a review is for. `--eligible-only` narrows it and
+  `--json` makes it attachable to a ticket.
+
+  Every eligible row is **conditional on the provider marking that address
+  verified**, which arrives in the assertion and cannot be known beforehand.
+  The report says so rather than implying certainty — Entra emits no
+  `email_verified` at all, so an Entra deployment adopts nothing however the
+  report reads.
+
+  There is no apply mode. Adoption happens at sign-in against a verified
+  assertion, and a command that linked accounts without one would be matching
+  identities by email, which is the vulnerability the design exists to avoid.
+
+  The preview does not restate the adoption rules; it imports the helpers the
+  backend applies, and a test drives both against the same fixtures and asserts
+  they agree. That test earned its place immediately: the first version counted
+  every account holding an address, while adoption counts only unlinked ones,
+  so an address held by one linked and one unlinked account would have been
+  reported ambiguous — telling an administrator nothing would happen, moments
+  before it did.
+
 ### Removed
 
 - **Four settings that were declared and read by nothing.** `BACKEND`,

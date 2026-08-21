@@ -80,6 +80,27 @@ BASTION = {
    the morning the provider is wrong or unavailable; an account the provider can
    claim through is not that.
 
+### Seeing what it would do first
+
+```console
+$ python manage.py bastion_link_preview
+```
+
+Walks the local user table and says, per account, what a first sign-in would
+do: which would be adopted, which are ambiguous because two accounts share an
+address, and which are skipped and why. `--eligible-only` narrows it,
+`--json` makes it reviewable in a ticket.
+
+Every eligible row is **conditional on the provider marking that address
+verified**, which arrives in the assertion and cannot be known beforehand. The
+report says so rather than implying certainty. Entra emits no `email_verified`
+at all, so an Entra deployment adopts nothing however the report reads.
+
+There is no apply mode, and there will not be one. Adoption happens at sign-in
+against a verified assertion; a command that linked accounts without one would
+be matching identities by email, which is the vulnerability this whole design
+avoids.
+
 Every outcome is audited. An adoption is a `user.identity_linked` record at
 `warning` severity carrying `context.adopted_local_account`, and a refusal to
 adopt is the same event type with `outcome=denied` and the reason — because
