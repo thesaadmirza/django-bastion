@@ -10,33 +10,33 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-### Changed
+Nothing since 0.0.1a9.
 
-- **Break-glass is documented as advanced and taken out of the common path.**
-  It was already off by default; what changed is everything that led people to
-  it anyway.
+## [0.0.1a9] - 2026-08-21
 
-  `bastion.E023` offered it as the second of three fixes, ahead of
-  `ADMIN["local_login"]`. A deployment took that advice, stood up an
-  unauthenticated credential endpoint purely to satisfy a check, and turned it
-  straight back off once `local_login` existed — which is the outcome the
-  feature should least produce. The hint now offers, in order: remove the
-  backend, declare `local_login`, and only then break-glass, with the note that
-  enabling it to satisfy the check is the one reason not to. A test pins that
-  ordering.
+Ten reports from a team evaluating this for a rollout, worked through in full.
 
-  It is out of the tutorial's "before this is production" steps. That section
-  now says to decide what happens when the provider is unavailable, and lists
-  the answers that do not add a login route — a cloud console, a shell, a
-  second provider — alongside the one that does. A getting-started page should
-  not be the reason a project takes on its most sensitive surface.
+**Read the Removed section before upgrading.** Seven things go: three package
+extras and four settings. None of them did anything — the extras installed
+dependencies the package never imported, and the settings were read by no code
+at all — so nothing that worked stops working. But if your requirements name
+`django-bastion[saml]`, or your settings dict sets `BACKEND` or `MAPPING`, both
+need an edit.
 
-  Out of the README's feature list too, into its own section that leads with
-  what it costs. The design is unchanged and the runbook is unchanged: the
-  written reason, the out-of-band alerting, critical severity on both outcomes,
-  the refusal to delete the last account, the drill command. Nothing about it
-  got worse; it stopped being suggested to people who had not decided they
-  wanted it.
+The theme running through the rest is narrower than ten separate bugs. This
+package kept saying things that were true when written and had quietly stopped
+being true: a threat model crediting a cryptography library that was never a
+dependency, extras for protocols with no code, a summary line advertising role
+mapping that one major provider cannot do, a diagnostic listing the redirect
+URI as uncheckable when one HTTP request checks it. Each is fixed, and each fix
+carries a test that pins the claim to the code, because prose does not stay
+true on its own.
+
+Two new commands answer questions that previously required reading the
+database: `bastion_link_preview` shows what account adoption would do before
+anyone signs in, and `bastion_access` shows who can reach the admin and on what
+basis. `bastion.testing` ships the fake provider that until now lived only in
+this repository's own suite.
 
 ### Added
 
@@ -63,8 +63,6 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   Accounts with no federated identity are called out, since those are the ones
   that predate SSO — and an inactive admin is still listed, because switched
   off is not the same as gone.
-
-### Added
 
 - **`manage.py bastion_link_preview`**, for seeing what
   `LINKING_POLICY = "verified_email_once"` would adopt before anyone signs in.
@@ -94,28 +92,6 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   reported ambiguous — telling an administrator nothing would happen, moments
   before it did.
 
-### Removed
-
-- **Four settings that were declared and read by nothing.** `BACKEND`,
-  `MAPPING["STRICT"]`, `MAPPING["MANAGED_GROUPS"]` and
-  `ADMIN["reauth_max_age"]` — and with the last of its keys gone, the `MAPPING`
-  namespace itself.
-
-  The settings reference states the rule they broke, on the same page:
-  *"Declared nowhere, on purpose. Shipping a config surface that does nothing
-  is worse than not having one."* A deployment could set any of the four and
-  get silence. `BACKEND` was the sharpest case: the comment directly above it
-  in `conf.py` gave that exact reasoning, and the backend has always been
-  loaded from `AUTHENTICATION_BACKENDS` rather than from there.
-
-  **Nothing changes behaviour.** None was read, so setting one never did
-  anything; after this, `get_setting()` raises for the name instead of
-  returning a value nothing consulted. All four are listed under "Not yet
-  implemented", which is where a reserved name belongs until something reads
-  it.
-
-### Added
-
 - **A deprecation policy**, at
   [docs/reference/deprecation-policy.md](docs/reference/deprecation-policy.md).
   What is covered, what a rename does, and how long a refused name keeps
@@ -138,8 +114,6 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   The existing coverage test had missed them: it asked whether the name
   appeared anywhere in the page, and `BACKEND` matched inside
   `AUTHENTICATION_BACKENDS`.
-
-### Added
 
 - **`bastion.testing`: a fake identity provider, in the package.** Testing an
   SSO integration means producing assertions no real provider will produce on
@@ -177,25 +151,6 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   which says nothing about your deployment, and shipping them would commit this
   package to an attack-token API with no reason to exist.
 
-### Removed
-
-- **The `saml`, `ldap` and `scim` extras.** They were declared in the package
-  metadata and shipped no modules, so `pip install django-bastion[saml]` pulled
-  in pysaml2 and xmlsec, `[ldap]` built python-ldap from source against OpenLDAP
-  headers, and neither gave you anything to call. Reserving a name is not worth
-  putting a signature-handling library with its own vulnerability history into
-  the dependency tree of a package that cannot reach it.
-
-  They come back one at a time, each with an implementation and a live tenant
-  behind it. A test now refuses an extra that installs a library the package
-  never imports; empty extras like `[oidc]` are still fine, because they install
-  nothing and so promise nothing.
-
-  **If you install with one of these**, drop it: `pip install django-bastion`
-  installs exactly what it did before. Nothing that worked stops working.
-
-### Added
-
 - **`bastion_doctor --check-registration` asks the provider whether your
   callback URL is registered.** `redirect_uri_mismatch` is the most common way
   an OIDC integration fails and the hardest to see from inside the application:
@@ -232,6 +187,74 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   `groups` by default and no truncation signal on Okta, no `email_verified` and
   no RFC 9207 `iss` on Entra. A test keeps the matrix and the registry in step
   in both directions.
+
+### Changed
+
+- **Break-glass is documented as advanced and taken out of the common path.**
+  It was already off by default; what changed is everything that led people to
+  it anyway.
+
+  `bastion.E023` offered it as the second of three fixes, ahead of
+  `ADMIN["local_login"]`. A deployment took that advice, stood up an
+  unauthenticated credential endpoint purely to satisfy a check, and turned it
+  straight back off once `local_login` existed — which is the outcome the
+  feature should least produce. The hint now offers, in order: remove the
+  backend, declare `local_login`, and only then break-glass, with the note that
+  enabling it to satisfy the check is the one reason not to. A test pins that
+  ordering.
+
+  It is out of the tutorial's "before this is production" steps. That section
+  now says to decide what happens when the provider is unavailable, and lists
+  the answers that do not add a login route — a cloud console, a shell, a
+  second provider — alongside the one that does. A getting-started page should
+  not be the reason a project takes on its most sensitive surface.
+
+  Out of the README's feature list too, into its own section that leads with
+  what it costs. The design is unchanged and the runbook is unchanged: the
+  written reason, the out-of-band alerting, critical severity on both outcomes,
+  the refusal to delete the last account, the drill command. Nothing about it
+  got worse; it stopped being suggested to people who had not decided they
+  wanted it.
+
+### Removed
+
+- **Four settings that were declared and read by nothing.** `BACKEND`,
+  `MAPPING["STRICT"]`, `MAPPING["MANAGED_GROUPS"]` and
+  `ADMIN["reauth_max_age"]` — and with the last of its keys gone, the `MAPPING`
+  namespace itself.
+
+  The settings reference states the rule they broke, on the same page:
+  *"Declared nowhere, on purpose. Shipping a config surface that does nothing
+  is worse than not having one."* A deployment could set any of the four and
+  get silence. `BACKEND` was the sharpest case: the comment directly above it
+  in `conf.py` gave that exact reasoning, and the backend has always been
+  loaded from `AUTHENTICATION_BACKENDS` rather than from there.
+
+  **Nothing changes behaviour.** None was read, so setting one never did
+  anything; after this, `get_setting()` raises for the name instead of
+  returning a value nothing consulted. All four are listed under "Not yet
+  implemented", which is where a reserved name belongs until something reads
+  it.
+
+- **The `saml`, `ldap` and `scim` extras.** They were declared in the package
+  metadata and shipped no modules, so `pip install django-bastion[saml]` pulled
+  in pysaml2 and xmlsec, `[ldap]` built python-ldap from source against OpenLDAP
+  headers, and neither gave you anything to call. Reserving a name is not worth
+  putting a signature-handling library with its own vulnerability history into
+  the dependency tree of a package that cannot reach it.
+
+  Removing them took ten packages out of the resolution: `pysaml2`,
+  `python-ldap`, `django-auth-ldap`, `pyopenssl`, `xmlschema`, `elementpath`,
+  `pyasn1`, `pyasn1-modules`, `python-dateutil` and `six`. That is the size of
+  the thing three unused names were carrying.
+
+  They come back one at a time, each with an implementation and a live tenant
+  behind it. A test now refuses an extra that installs a library the package
+  never imports; empty extras like `[oidc]` are still fine, because they install
+  nothing and so promise nothing.
+
+  **If you install with one of these**, drop it: `pip install django-bastion`
+  installs exactly what it did before. Nothing that worked stops working.
 
 ### Fixed
 
