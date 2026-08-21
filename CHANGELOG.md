@@ -27,7 +27,33 @@ See [SECURITY.md](SECURITY.md) for how to report one.
   **If you install with one of these**, drop it: `pip install django-bastion`
   installs exactly what it did before. Nothing that worked stops working.
 
+### Added
+
+- **A provider matrix**, at [docs/reference/providers.md](docs/reference/providers.md). Five profiles
+  ship and they are not equally proven: `entra` has been run against Microsoft's
+  live endpoints and a real tenant, `google` has had its public discovery
+  document read and no sign-in driven through it, and `okta`, `keycloak` and
+  `generic` are written from the specification. The page says which is which,
+  because "from the specification" means the failure mode is undiscovered
+  rather than absent.
+
+  It also collects the per-provider gaps that otherwise turn up one at a time
+  mid-rollout: no group claim and no `end_session_endpoint` on Google, no
+  `groups` by default and no truncation signal on Okta, no `email_verified` and
+  no RFC 9207 `iss` on Entra. A test keeps the matrix and the registry in step
+  in both directions.
+
 ### Fixed
+
+- **The summary line promised role mapping the package cannot always do.** It
+  said "claims-to-role mapping" with no qualifier, while `staff_groups` and
+  `superuser_groups` cannot match anything on Google: the ID token carries no
+  group claim, so a Google connection authenticates people and never grants
+  staff. Nothing was broken — group evidence that does not exist is correctly
+  treated as incomplete rather than empty, which blocks escalation instead of
+  stripping privileges — but a deployer found this out after wiring everything
+  up. The summary, the README and the two settings rows now name the
+  dependency.
 
 - **The threat model described a different package.** It said signature
   verification and JOSE primitives were the work of authlib, pysaml2 and
