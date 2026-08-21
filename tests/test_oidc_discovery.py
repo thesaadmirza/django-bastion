@@ -77,6 +77,26 @@ class TestIssuerBinding:
         with pytest.raises(DiscoveryError):
             validate_metadata(doc, expected_issuer=ISSUER)
 
+    def test_a_templated_issuer_says_what_is_wrong(self, entra_idp: FakeIdP) -> None:
+        """The literal string Microsoft serves at /common and /organizations.
+
+        A bare mismatch reads like a typo in the URL, and the remedy is the
+        opposite of fixing one: the endpoint has to be abandoned for a
+        tenant-specific issuer. Nothing here knows it is Entra -- the braces
+        are what identify a template.
+        """
+        doc = document(entra_idp, issuer="https://login.microsoftonline.com/{tenantid}/v2.0")
+        with pytest.raises(DiscoveryError, match="template, not an issuer"):
+            validate_metadata(
+                doc, expected_issuer="https://login.microsoftonline.com/organizations/v2.0"
+            )
+
+    def test_an_ordinary_mismatch_does_not_mention_templates(self, idp: FakeIdP) -> None:
+        doc = document(idp, issuer="https://attacker.test")
+        with pytest.raises(DiscoveryError, match="does not match") as caught:
+            validate_metadata(doc, expected_issuer=ISSUER)
+        assert "template" not in str(caught.value)
+
 
 class TestRequiredFields:
     @pytest.mark.parametrize(

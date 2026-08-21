@@ -89,10 +89,23 @@ def validate_metadata(
         # OIDC Discovery 4.3, and not a formality. Without it, whoever controls
         # what we fetch also controls the value every later `iss` check is
         # compared against.
-        raise DiscoveryError(
+        detail = (
             f"discovery document declares issuer {issuer!r}, "
             f"which does not match {expected_issuer!r}"
         )
+        if "{" in issuer and "}" in issuer:
+            # A multi-tenant endpoint, which advertises a template rather than
+            # an identifier. Said here because the mismatch on its own reads
+            # like a typo, and the remedy is not to fix the URL but to stop
+            # using an endpoint that stands for many issuers. Entra's /common
+            # and /organizations are the ones people meet; the wording names
+            # none of them, because the shape is what gives it away.
+            detail += (
+                ". That is a template, not an issuer: this endpoint stands for "
+                "many tenants and identifies none of them. Configure the issuer "
+                "of the single tenant you mean."
+            )
+        raise DiscoveryError(detail)
 
     for name in ENDPOINT_FIELDS:
         endpoint = document.get(name)
