@@ -44,6 +44,8 @@ Task-oriented. Assume you know what you are doing.
 ## Reference
 
 - [Settings](reference/settings.md)
+- [Deprecation policy](reference/deprecation-policy.md) — what a rename does, how long
+  an old key keeps failing loudly, and what to expect across a minor version
 - [Provider matrix](reference/providers.md) — what each provider gives you, and how far each profile has
   actually been proven
 - [Audit event catalogue](reference/audit-events.md)

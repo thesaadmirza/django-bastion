@@ -10,6 +10,51 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+### Removed
+
+- **Four settings that were declared and read by nothing.** `BACKEND`,
+  `MAPPING["STRICT"]`, `MAPPING["MANAGED_GROUPS"]` and
+  `ADMIN["reauth_max_age"]` — and with the last of its keys gone, the `MAPPING`
+  namespace itself.
+
+  The settings reference states the rule they broke, on the same page:
+  *"Declared nowhere, on purpose. Shipping a config surface that does nothing
+  is worse than not having one."* A deployment could set any of the four and
+  get silence. `BACKEND` was the sharpest case: the comment directly above it
+  in `conf.py` gave that exact reasoning, and the backend has always been
+  loaded from `AUTHENTICATION_BACKENDS` rather than from there.
+
+  **Nothing changes behaviour.** None was read, so setting one never did
+  anything; after this, `get_setting()` raises for the name instead of
+  returning a value nothing consulted. All four are listed under "Not yet
+  implemented", which is where a reserved name belongs until something reads
+  it.
+
+### Added
+
+- **A deprecation policy**, at
+  [docs/reference/deprecation-policy.md](docs/reference/deprecation-policy.md).
+  What is covered, what a rename does, and how long a refused name keeps
+  failing loudly before it goes: two minor versions, then it is removed from
+  the refusal list. Renamed keys are refused rather than ignored, because a
+  deployment running with a control it believes is on is worse than one that
+  will not boot.
+
+- **The configuration surface is held still by a test.** Every global setting,
+  every per-connection key, every check id and every refused name is listed in
+  `tests/test_settings_surface.py`. Adding one is a line there; the point is
+  that it cannot happen as a side effect of adding a dataclass field, and that
+  the surface moves in a diff a reviewer sees.
+
+  It found seven keys that worked and were undocumented — the four above, plus
+  `transport`, `transactions` and `validation`, which take objects rather than
+  data and are how a custom transport or a shared transaction store gets in.
+  Those three are documented now, as extension points.
+
+  The existing coverage test had missed them: it asked whether the name
+  appeared anywhere in the page, and `BACKEND` matched inside
+  `AUTHENTICATION_BACKENDS`.
+
 ### Added
 
 - **`bastion.testing`: a fake identity provider, in the package.** Testing an

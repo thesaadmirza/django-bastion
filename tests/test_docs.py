@@ -508,13 +508,13 @@ def test_documented_connections_have_what_the_loader_requires(page: str) -> None
 #:
 #: Same shape as the reserved-event markers in the audit catalogue, and for the
 #: same reason: the honest version of an unfinished feature is a marked one.
-INERT_SETTINGS = {
-    "BACKEND": "the backend is imported by path from AUTHENTICATION_BACKENDS, not from here",
-    "MAPPING": "the dict itself is never resolved; its keys arrive with the rule engine",
-    "MAPPING.STRICT": "arrives with the rule engine, v0.2",
-    "MAPPING.MANAGED_GROUPS": "arrives with the rule engine, v0.2",
-    "ADMIN.reauth_max_age": "step-up re-authentication is not built",
-}
+#: Empty, and worth keeping that way.
+#:
+#: It held five entries, every one a key a deployment could set for no effect.
+#: They are gone: a name waiting on code belongs under "Not yet implemented" on
+#: the settings page, where it costs nothing and promises nothing. See
+#: docs/reference/deprecation-policy.md.
+INERT_SETTINGS: dict[str, str] = {}
 
 
 def _setting_names() -> list[str]:

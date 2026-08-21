@@ -478,18 +478,20 @@ class TestSettingsResolution:
     def test_defaults_are_available(self) -> None:
         assert get_setting("IDENTITY")["KEY"] == ("issuer", "subject")
 
-    @override_settings(BASTION={"MAPPING": {"STRICT": False}})
+    @override_settings(BASTION={"BREAK_GLASS": {"ENABLED": True}})
     def test_user_settings_merge_one_level(self) -> None:
-        mapping = get_setting("MAPPING")
-        assert mapping["STRICT"] is False
+        """On a setting something reads. These used to exercise MAPPING, which
+        was declared and read by nothing and is gone."""
+        config = get_setting("BREAK_GLASS")
+        assert config["ENABLED"] is True
         # sibling defaults survive the merge
-        assert mapping["MANAGED_GROUPS"] == "prefix:sso-"
+        assert config["MAX_FAILURES_PER_IP"] == 5
 
     def test_override_settings_invalidates_the_cache(self) -> None:
-        assert get_setting("MAPPING")["STRICT"] is True
-        with override_settings(BASTION={"MAPPING": {"STRICT": False}}):
-            assert get_setting("MAPPING")["STRICT"] is False
-        assert get_setting("MAPPING")["STRICT"] is True
+        assert get_setting("BREAK_GLASS")["ENABLED"] is False
+        with override_settings(BASTION={"BREAK_GLASS": {"ENABLED": True}}):
+            assert get_setting("BREAK_GLASS")["ENABLED"] is True
+        assert get_setting("BREAK_GLASS")["ENABLED"] is False
 
     def test_unknown_setting_raises(self) -> None:
         with pytest.raises(AttributeError):
