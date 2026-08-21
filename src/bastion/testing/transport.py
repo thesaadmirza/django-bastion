@@ -8,7 +8,7 @@ from typing import Any
 
 from bastion.protocols.oidc.discovery import discovery_url
 from bastion.protocols.oidc.transport import TransportError
-from tests.idp.provider import FakeIdP
+from bastion.testing.provider import FakeIdP
 
 
 @dataclass
