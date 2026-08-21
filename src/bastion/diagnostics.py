@@ -4,12 +4,17 @@ Most SSO debugging is a configuration typo three layers down, surfaced as a
 failed login with no useful detail. This module walks the whole path before
 anyone tries to use it.
 
-It is deliberately honest about its limits. Several things an operator would
-like verified simply cannot be, without a real person completing a real login:
-whether the redirect URI is registered at the provider, whether the group claim
-is actually emitted, whether MFA will be asserted. Those are reported as
-"cannot verify" rather than quietly omitted, because a green run that silently
-skipped the interesting question is worse than no run at all.
+It is deliberately honest about its limits. Some things an operator would like
+verified cannot be without a real person completing a real login: whether the
+group claim is actually emitted, and whether MFA will be asserted. Those are
+reported as "cannot verify" rather than quietly omitted, because a green run
+that silently skipped the interesting question is worse than no run at all.
+
+Whether the redirect URI is registered was on that list for a long time, and
+should not have been. One authorization request answers it, without a client
+secret and without issuing a token, because the flow is abandoned before the
+code is exchanged. ``--check-registration`` does exactly that: off by default
+only because it is the one check here that shows up in the provider's logs.
 """
 
 from __future__ import annotations
@@ -70,8 +75,19 @@ class Report:
         return any(r.status is Status.WARN for r in self.results)
 
 
-def check_connection(connection: Connection, *, offline: bool = False) -> Report:
-    """Run every check for one connection."""
+def check_connection(
+    connection: Connection,
+    *,
+    offline: bool = False,
+    registration_url: str | None = None,
+) -> Report:
+    """Run every check for one connection.
+
+    ``registration_url`` opts into one extra request, to the provider's
+    authorization endpoint, asking whether that exact callback URL is
+    registered. Off unless asked for: it is the only check here that makes this
+    process visible in the provider's logs.
+    """
     report = Report(connection=connection.identifier)
     report.results.extend(_config_checks(connection))
     if offline:
@@ -83,7 +99,7 @@ def check_connection(connection: Connection, *, offline: bool = False) -> Report
             )
         )
         return report
-    report.results.extend(_network_checks(connection))
+    report.results.extend(_network_checks(connection, registration_url=registration_url))
     return report
 
 
@@ -162,7 +178,9 @@ def _config_checks(connection: Connection) -> Iterator[Result]:
         )
 
 
-def _network_checks(connection: Connection) -> Iterator[Result]:
+def _network_checks(
+    connection: Connection, *, registration_url: str | None = None
+) -> Iterator[Result]:
     try:
         metadata = connection.metadata()
     except BastionError as exc:
@@ -181,6 +199,9 @@ def _network_checks(connection: Connection) -> Iterator[Result]:
     yield from _key_check(connection)
     yield from _clock_check(connection, metadata)
 
+    if registration_url is not None:
+        yield _registration_check(connection, metadata, registration_url)
+
     if metadata.supports_rp_initiated_logout:
         yield Result("logout", Status.OK, "Provider supports RP-initiated logout.")
     else:
@@ -194,6 +215,57 @@ def _network_checks(connection: Connection) -> Iterator[Result]:
                 "Google is the common case here."
             ),
         )
+
+
+def _registration_check(connection: Connection, metadata: Any, callback_url: str) -> Result:
+    """Ask the provider about the callback URL, rather than guessing.
+
+    This was reported as unverifiable for a long time, and it is not: one
+    authorization request answers it, needs no client secret, and issues no
+    token because the flow is abandoned where it starts. The reason it stayed
+    unverifiable is that a deployment had to guess whether a console edit had
+    propagated, or landed on a different client, from a login that just failed.
+    """
+    from bastion.protocols.oidc.registration import Registration, probe_registration
+
+    probe = probe_registration(
+        authorization_endpoint=metadata.authorization_endpoint,
+        client_id=connection.client_id,
+        redirect_uri=callback_url,
+    )
+
+    status, hint = {
+        Registration.REGISTERED: (
+            Status.OK,
+            None,
+        ),
+        Registration.NOT_REGISTERED: (
+            Status.FAIL,
+            "Register this exact string at the provider, trailing slash "
+            "included. If you believe you already have, check that the edit "
+            "was saved on this client id and not another, and that it has "
+            "propagated -- some providers take a minute.",
+        ),
+        Registration.CLIENT_REJECTED: (
+            Status.FAIL,
+            "Fix the client id first. Nothing can be established about the "
+            "redirect URI while the application itself is refused.",
+        ),
+        Registration.INCONCLUSIVE: (
+            Status.UNVERIFIABLE,
+            "Reported as unknown rather than passed. Nothing here treats the "
+            "absence of a recognised error as success, because at least one "
+            "provider answers a bad client id with HTTP 200 and an HTML page "
+            "carrying no error parameter at all.",
+        ),
+    }[probe.verdict]
+
+    return Result(
+        "redirect uri",
+        status,
+        f"{probe.detail} Asked about {callback_url}",
+        hint=hint,
+    )
 
 
 def _pkce_check(metadata: Any) -> Iterator[Result]:
@@ -375,11 +447,8 @@ def _callback_url_result(path: str, base_url: str | None) -> Result:
     The scheme is knowable at check time. So it is shown, along with what its
     value depends on, and a plain-http result warns rather than passing.
     """
-    from urllib.parse import urlsplit, urlunsplit
-
     if base_url:
-        split = urlsplit(base_url)
-        url = urlunsplit((split.scheme or "https", split.netloc or split.path, path, "", ""))
+        url = _url_from_base(path, base_url)
         secure = url.startswith("https://")
         return Result(
             "urls",
@@ -423,6 +492,31 @@ def _callback_url_result(path: str, base_url: str | None) -> Result:
         + " Whether it is registered at the provider still cannot be checked "
         "from here, and it must match exactly, trailing slash included.",
     )
+
+
+def _url_from_base(path: str, base_url: str) -> str:
+    """Join a stated base URL to the callback path. Scheme defaults to https."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    split = urlsplit(base_url)
+    return urlunsplit((split.scheme or "https", split.netloc or split.path, path, "", ""))
+
+
+def resolve_callback_url(path: str, base_url: str | None) -> str | None:
+    """The absolute callback URL, or ``None`` when no host is knowable.
+
+    Shared with the registration probe, which asks the provider about this
+    exact string. Two ways of assembling it would eventually disagree, and the
+    one that got it wrong would be the one reporting success.
+    """
+    if base_url:
+        return _url_from_base(path, base_url)
+
+    host, _ = _deployment_host()
+    if host is None:
+        return None
+    scheme, _ = _inferred_scheme()
+    return f"{scheme}://{host}{path}"
 
 
 def _deployment_host() -> tuple[str | None, int]:

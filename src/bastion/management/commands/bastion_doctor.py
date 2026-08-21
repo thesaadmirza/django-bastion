@@ -51,6 +51,18 @@ class Command(BaseCommand):
             help="Treat warnings as failures.",
         )
         parser.add_argument(
+            "--check-registration",
+            action="store_true",
+            dest="check_registration",
+            help=(
+                "Ask each provider whether the callback URL is registered, by "
+                "starting one authorization request and reading the answer. No "
+                "client secret is used and no token is issued, because the flow "
+                "is abandoned before the code is exchanged. Off by default: it "
+                "is the only check here that appears in the provider's logs."
+            ),
+        )
+        parser.add_argument(
             "--base-url",
             dest="base_url",
             default=None,
@@ -72,6 +84,19 @@ class Command(BaseCommand):
             )
 
         reports = [check_project(base_url=options["base_url"])]
+
+        registration_url = None
+        if options["check_registration"]:
+            registration_url = _callback_url(options["base_url"])
+            if registration_url is None:
+                raise CommandError(
+                    "--check-registration needs the absolute callback URL, and "
+                    "it cannot be assembled here: ALLOWED_HOSTS names no "
+                    "concrete host. Re-run with --base-url https://your.host so "
+                    "the provider is asked about the string it would actually "
+                    "receive."
+                )
+
         for name in names:
             try:
                 connection = get_connection(name)
@@ -83,7 +108,13 @@ class Command(BaseCommand):
                     )
                 )
                 continue
-            reports.append(check_connection(connection, offline=options["offline"]))
+            reports.append(
+                check_connection(
+                    connection,
+                    offline=options["offline"],
+                    registration_url=registration_url,
+                )
+            )
 
         if options["as_json"]:
             self._emit_json(reports)
@@ -143,6 +174,23 @@ class Command(BaseCommand):
                 "rather than skipped so that a clean run is not mistaken for a "
                 "complete one."
             )
+
+
+def _callback_url(base_url: str | None) -> str | None:
+    """The URL the provider will be asked about, or None if it is unknowable.
+
+    Deliberately the same function the report prints from. Asking about a URL
+    the deployment would not actually send is worse than not asking.
+    """
+    from django.urls import NoReverseMatch, reverse
+
+    from bastion.diagnostics import resolve_callback_url
+
+    try:
+        path = reverse("bastion:callback")
+    except NoReverseMatch:
+        return None
+    return resolve_callback_url(path, base_url)
 
 
 def _counts(reports: list[Report]) -> dict[Status, int]:
