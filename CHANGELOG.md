@@ -10,6 +10,13 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+Nothing since 0.1.1.
+
+## [0.1.1] - 2026-08-21
+
+**Two claims that had stopped being true, both found by pointing a real project
+at real providers rather than at the test harness.**
+
 ### Added
 
 - Provider profiles carry `sign_in_paths`, the paths a provider redirects to
@@ -900,7 +907,10 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a8...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a9...v0.1.0
+[0.0.1a9]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a8...v0.0.1a9
 [0.0.1a8]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a7...v0.0.1a8
 [0.0.1a7]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a6...v0.0.1a7
 [0.0.1a6]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a5...v0.0.1a6

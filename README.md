@@ -3,7 +3,7 @@
 Enterprise SSO and identity governance for Django. Puts the admin behind your identity provider, turns
 the group claim into staff and superuser rights, and records who got what and when.
 
-> **Version 0.1.0, and the configuration surface is now frozen.** Every settings key, check id and audit
+> **Version 0.1.1, and the configuration surface is now frozen.** Every settings key, check id and audit
 > event name is covered by a written
 > [deprecation policy](docs/reference/deprecation-policy.md): a renamed key is refused at startup with a
 > message naming its replacement, and stays refused for two minor versions. What is *not* covered is

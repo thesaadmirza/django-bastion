@@ -67,7 +67,7 @@ See [data inventory](../security/data-inventory.md) for the full list.
 
 ## Things that are missing right now
 
-At version 0.1.0:
+At version 0.1.1:
 
 - **SAML.** Planned, not built. If you need it today, use
   [djangosaml2](https://github.com/IdentityPython/djangosaml2) or allauth.

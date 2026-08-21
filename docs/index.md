@@ -2,7 +2,7 @@
 
 Enterprise SSO and identity governance for Django.
 
-> **0.1.0.** The configuration surface is frozen under a written
+> **0.1.1.** The configuration surface is frozen under a written
 > [deprecation policy](reference/deprecation-policy.md); nothing else about the
 > package is. OIDC works end to end; SAML and SCIM do not exist yet. Read
 > [why you might not want this](explanation/why-you-might-not-want-this.md)
