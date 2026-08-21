@@ -248,6 +248,48 @@ def test_every_extra_installs_something_the_package_can_call() -> None:
     )
 
 
+#: Libraries a security page must not credit unless they are actually here.
+#: The threat model said signature verification was "delegated to authlib,
+#: pysaml2 and python-ldap". None was ever imported and one was never even a
+#: dependency, so the page told a reviewer the crypto was someone else's
+#: audited code while the package carried a hand-rolled JWS verifier.
+_LIBRARIES_THAT_MUST_BE_REAL = ("authlib", "pysaml2", "python-ldap", "xmlsec", "lxml", "joserfc")
+
+
+@pytest.mark.parametrize("page", ["security/threat-model.md", "security/crypto-inventory.md"])
+def test_no_security_page_credits_a_library_we_do_not_have(page: str) -> None:
+    """Naming a library you do not depend on transfers its reputation to code
+    that never runs it.
+
+    Mentioning one is fine -- saying what is *not* used is useful, and the
+    threat model does exactly that. What is refused is crediting it: naming it
+    as the thing that performs a control.
+    """
+    import re
+    import tomllib
+
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    dependencies = " ".join(declared["dependencies"])
+    for group in (declared.get("optional-dependencies") or {}).values():
+        dependencies += " " + " ".join(group)
+
+    text = (DOCS / page).read_text(encoding="utf-8")
+    credited = []
+    for library in _LIBRARIES_THAT_MUST_BE_REAL:
+        if library in dependencies:
+            continue
+        # "delegated to authlib", "verified by pysaml2", "uses lxml"
+        credits = r"(?:delegated to|handled by|verified by|performed by|uses|via)"
+        pattern = rf"{credits}\s+[^.]*\b{re.escape(library)}\b"
+        if re.search(pattern, text, re.I):
+            credited.append(library)
+
+    assert not credited, (
+        f"{page} credits libraries this package does not depend on: {credited}. "
+        "Say what the code actually does, or add the dependency."
+    )
+
+
 def _django_floor(*, mariadb: bool) -> tuple[int, ...]:
     """The minimum server version the installed Django enforces.
 
