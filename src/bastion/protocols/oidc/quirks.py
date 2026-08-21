@@ -121,12 +121,13 @@ class EntraQuirks(ProviderQuirks):
         return oid, "oid"
 
     def check(self, claims: Mapping[str, Any]) -> None:
-        """Validate the tenant.
+        """Compare ``tid`` against the configured tenant.
 
-        Required for the ``/common`` and ``/organizations`` endpoints, where
-        the issuer does not pin a tenant and any Microsoft account in the world
-        can authenticate. Single-tenant issuers carry the tenant already, but
-        checking twice costs nothing.
+        Every configurable Entra issuer already names its tenant in the URL --
+        the multi-tenant endpoints declare a templated issuer and are refused
+        during discovery -- so this is a second opinion taken from the token
+        rather than from the address it was fetched over, and it fires if the
+        two ever disagree.
         """
         if self.expected_tenant is None:
             return

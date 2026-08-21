@@ -517,6 +517,67 @@ def test_documented_connections_have_what_the_loader_requires(page: str) -> None
         assert not missing, f"{page} shows a connection missing {sorted(missing)}"
 
 
+#: Entra endpoints that serve a templated ``issuer`` and so cannot be
+#: configured. Microsoft documents the placeholder; discovery refuses it. Named
+#: here because the pages once recommended two of them, which is the kind of
+#: claim that survives review by being about the provider rather than the code.
+_MULTI_TENANT_ENDPOINTS = ("common", "organizations", "consumers")
+
+#: Either form the endpoints appear in: a path segment written ``/common``, or
+#: a whole URL. Both, because the original defect named them the first way and
+#: a page recommending the second would be the same mistake.
+_ENDPOINT_MENTION = rf"(?:login\.microsoftonline\.com/|`/)({'|'.join(_MULTI_TENANT_ENDPOINTS)})\b"
+
+#: What counts as saying an endpoint does not work. Stems rather than whole
+#: phrases: ``refus`` covers refuse/refused/refusal and ``not work`` covers
+#: both do and does, so ordinary rewording does not fail the test.
+_REFUSAL_WORDS = ("refus", "cannot", "not work")
+
+
+@pytest.mark.parametrize("page", CONFIG_PAGES)
+def test_no_page_configures_a_multi_tenant_endpoint(page: str) -> None:
+    """A copyable example that cannot work is worse than no example.
+
+    It survives ``manage.py check``, which does no network work, and fails on
+    the first sign-in.
+    """
+    text = (ROOT / page).read_text(encoding="utf-8")
+    configured = re.search(
+        rf'"issuer"\s*:\s*"https://login\.microsoftonline\.com/'
+        rf"({'|'.join(_MULTI_TENANT_ENDPOINTS)})/",
+        text,
+    )
+    assert not configured, (
+        f"{page} configures the /{configured.group(1)} endpoint, whose discovery "
+        f"document declares a different issuer. That passes manage.py check and "
+        f"fails at the first login; bastion_doctor catches it, nothing else does."
+    )
+
+
+@pytest.mark.parametrize("page", CONFIG_PAGES)
+def test_a_page_naming_a_multi_tenant_endpoint_says_it_is_refused(page: str) -> None:
+    """The half that catches the defect that actually happened.
+
+    entra.md recommended ``/common`` in prose while configuring a real tenant
+    in every code block, so a test reading only code blocks passed while the
+    page told people the opposite of the truth.
+
+    Scoped to the section, which is the smallest unit that survives editing.
+    Per-paragraph fails on a reflow; per-page passes on anything, because
+    entra.md says "the package refuses to run without it" about a different
+    claim entirely and that alone would satisfy the whole file.
+    """
+    text = (ROOT / page).read_text(encoding="utf-8")
+
+    for section in re.split(r"^#+ ", text, flags=re.MULTILINE):
+        named = sorted({match.group(1) for match in re.finditer(_ENDPOINT_MENTION, section)})
+        if not named:
+            continue
+        assert any(word in section.lower() for word in _REFUSAL_WORDS), (
+            f"{page} names {named} without saying they are refused:\n\n{section.strip()}"
+        )
+
+
 #: Settings declared in ``conf.DEFAULTS`` that nothing reads yet, each with the
 #: reason. The list exists so that "declared but inert" is a visible, shrinking
 #: set rather than something a reader discovers by grepping, which is how
