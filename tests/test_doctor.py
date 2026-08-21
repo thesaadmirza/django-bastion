@@ -251,6 +251,79 @@ class TestHonesty:
         assert not check_connection(connection).failed
 
 
+class TestRegistrationCheck:
+    """The probe is opt-in, and each verdict has to land as the right status.
+
+    An inconclusive answer reporting OK would be the whole point missed: this
+    exists so a deployment stops guessing, not so it gets a second thing to
+    guess about.
+    """
+
+    @staticmethod
+    def _probe(monkeypatch: pytest.MonkeyPatch, verdict: Any) -> None:
+        from bastion.protocols.oidc import registration
+
+        monkeypatch.setattr(
+            registration,
+            "probe_registration",
+            lambda **_: registration.Probe(verdict, "detail."),
+        )
+
+    @pytest.mark.parametrize(
+        ("verdict_name", "expected"),
+        [
+            ("REGISTERED", Status.OK),
+            ("NOT_REGISTERED", Status.FAIL),
+            ("CLIENT_REJECTED", Status.FAIL),
+            ("INCONCLUSIVE", Status.UNVERIFIABLE),
+        ],
+    )
+    def test_each_verdict_lands_as_the_right_status(
+        self,
+        idp: FakeIdP,
+        transport: FakeTransport,
+        monkeypatch: pytest.MonkeyPatch,
+        verdict_name: str,
+        expected: Status,
+    ) -> None:
+        from bastion.protocols.oidc.registration import Registration
+
+        self._probe(monkeypatch, getattr(Registration, verdict_name))
+        report = check_connection(
+            build(idp, transport),
+            registration_url="https://admin.example.test/sso/callback/",
+        )
+        assert statuses(report.results)["redirect uri"] is expected
+
+    def test_the_url_asked_about_is_in_the_output(
+        self, idp: FakeIdP, transport: FakeTransport, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """So a mismatch between what was asked and what is registered is
+        visible without re-deriving the URL by hand."""
+        from bastion.protocols.oidc.registration import Registration
+
+        self._probe(monkeypatch, Registration.NOT_REGISTERED)
+        report = check_connection(
+            build(idp, transport),
+            registration_url="https://admin.example.test/sso/callback/",
+        )
+        detail = next(r.detail for r in report.results if r.name == "redirect uri")
+        assert "https://admin.example.test/sso/callback/" in detail
+
+    def test_it_does_not_run_unless_asked(self, idp: FakeIdP, transport: FakeTransport) -> None:
+        report = check_connection(build(idp, transport))
+        assert "redirect uri" not in statuses(report.results)
+
+    def test_offline_wins(self, idp: FakeIdP, transport: FakeTransport) -> None:
+        """--offline promises no network requests, and this is one."""
+        report = check_connection(
+            build(idp, transport),
+            offline=True,
+            registration_url="https://admin.example.test/sso/callback/",
+        )
+        assert "redirect uri" not in statuses(report.results)
+
+
 class TestOfflineMode:
     def test_no_network_checks_run(self, idp: FakeIdP, transport: FakeTransport) -> None:
         report = check_connection(build(idp, transport), offline=True)
@@ -371,6 +444,44 @@ class TestCommand:
     def test_no_connections_is_an_error(self) -> None:
         with pytest.raises(CommandError, match="No connections"):
             self._run()
+
+    @override_settings(ALLOWED_HOSTS=[], DEBUG=False)
+    def test_check_registration_refuses_to_guess_the_url(self, monkeypatch) -> None:
+        """Asking the provider about a URL the deployment would never send is
+        worse than not asking: the answer would be about nothing."""
+        monkeypatch.setattr(
+            "bastion.management.commands.bastion_doctor.get_setting",
+            lambda key: {"corp": {}},
+        )
+        with pytest.raises(CommandError, match="--base-url"):
+            self._run("--check-registration")
+
+    def test_check_registration_asks_about_the_url_the_report_prints(
+        self, idp: FakeIdP, transport: FakeTransport, monkeypatch
+    ) -> None:
+        """One derivation, shared. Two would drift, and the one that got it
+        wrong would be the one reporting success."""
+        connection = build(idp, transport)
+        monkeypatch.setattr(
+            "bastion.management.commands.bastion_doctor.get_connection",
+            lambda name: connection,
+        )
+        monkeypatch.setattr(
+            "bastion.management.commands.bastion_doctor.get_setting",
+            lambda key: {"corp": {}},
+        )
+
+        asked: dict[str, Any] = {}
+
+        def record(**kwargs: Any) -> Any:
+            from bastion.protocols.oidc.registration import Probe, Registration
+
+            asked.update(kwargs)
+            return Probe(Registration.REGISTERED, "detail.")
+
+        monkeypatch.setattr("bastion.protocols.oidc.registration.probe_registration", record)
+        self._run("--check-registration", "--base-url", "https://admin.example.com")
+        assert asked["redirect_uri"] == "https://admin.example.com/sso/callback/"
 
     def test_json_output_is_parseable(
         self, idp: FakeIdP, transport: FakeTransport, monkeypatch
