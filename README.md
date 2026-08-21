@@ -104,16 +104,6 @@ an address the provider says is verified, only from a domain you pin, only where
 account holds it and has no federated identity yet, and never onto a break-glass account. After that it
 pins to the subject like everything else. Both the adoption and every refusal to adopt are audited.
 
-**Break-glass you can actually rely on.** Creating one requires a written reason. Using one alerts a
-channel that does not depend on the identity provider, which matters because the outage that sends you
-here may be the provider itself. Both outcomes are recorded at critical severity, so a failed attempt is
-as visible as a successful one, and the account set can be restricted by network.
-
-The model also refuses to delete the last active account. Deleting your way to zero is the sort of thing
-people do while tidying up, and the consequence only appears during the incident that needed it. There is
-a drill command for the same reason: an emergency account nobody has ever signed in with is an emergency
-account nobody knows works.
-
 **An audit log built for the people who will ask for it.** Append-only, hash-chained, with the field set
 that NIST AU-3, PCI 10.2.2 and ISO 27002 8.15 independently converge on, plus a gapless sequence number so
 an exported sample can be shown to be complete.
@@ -132,6 +122,27 @@ def test_an_unverified_address_is_refused(client):
 ```
 
 [Testing your integration](docs/how-to/testing-your-integration.md) has the rest.
+
+## Advanced: break-glass
+
+**Off by default, and deliberately not part of the quickstart.** It is an unauthenticated credential
+endpoint — the most sensitive surface this package has — and a deployment should arrive at it by deciding
+it needs one, not by following a getting-started page or by silencing a check.
+
+When you do want one, the design is what you would want from an emergency route. Creating an account
+requires a written reason. Using one alerts a channel that does not depend on the identity provider, which
+matters because the outage that sent you there may be the provider. Both outcomes are recorded at critical
+severity, so a failed attempt is as visible as a successful one, and the account set can be restricted by
+network. The model refuses to delete the last active account, and there is a drill command, because an
+emergency account nobody has ever signed in with is an emergency account nobody knows works.
+
+Most projects do not need it. A cloud console that can flip a flag, a shell on the box, or a second
+provider are all answers to "the IdP is down", and none of them adds a login route. If what you actually
+have is a password path serving a portal or an API rather than the admin, say so with
+`ADMIN["local_login"] = "elsewhere"` — that is the setting `bastion.E023` is asking about, and enabling
+break-glass to satisfy that check is the one reason not to enable it.
+
+[The runbook](docs/security/break-glass-runbook.md) covers setup, the drill, and what to do afterwards.
 
 ## Why you might not want this
 
