@@ -10,7 +10,20 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.0.
+### Fixed
+
+- **The Entra guide recommended `/common` and `/organizations` as issuers.**
+  Neither can be configured: both declare a templated issuer that discovery
+  refuses. `expected_tenant` is a second opinion on `tid` in every
+  configuration that can be built, rather than the only thing standing between
+  you and every Microsoft account alive. See
+  [the rewritten guide](docs/how-to/idp/entra.md).
+  ([#38](https://github.com/thesaadmirza/django-bastion/issues/38))
+
+### Changed
+
+- A discovery document declaring a templated issuer now says so, instead of
+  reporting a mismatch that reads like a typo in the URL.
 
 ## [0.1.0] - 2026-08-21
 
