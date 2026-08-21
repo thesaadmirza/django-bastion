@@ -64,12 +64,16 @@ $ python manage.py bastion_doctor
 document, the JWKS and the signing algorithms, compares your clock against theirs, and works through the
 local half from the session engine to whether break-glass has anyone to alert.
 
-Three things it will not tell you are fine. Whether the redirect URI is actually registered at the
-provider, whether the group claim is emitted and in what shape, and whether MFA will really be asserted:
-none of those can be known without a person completing a real login, so they come back marked unverifiable
-with the reason attached. A run that quietly skipped them would read better and help less. Most SSO
-debugging is a config typo three layers down, and a green tick over an unasked question is how you lose an
-afternoon to it.
+Add `--check-registration` and it also asks the provider whether your callback URL is registered — one
+authorization request, no client secret, no token, because the flow is abandoned before the code is
+exchanged. `redirect_uri_mismatch` is the most common way an integration fails and the hardest to see from
+inside the app, where the settings are right and the provider still refuses.
+
+Two things it still will not tell you are fine: whether the group claim is emitted and in what shape, and
+whether MFA will really be asserted. Neither can be known without a person completing a real login, so
+they come back marked unverifiable with the reason attached. A run that quietly skipped them would read
+better and help less. Most SSO debugging is a config typo three layers down, and a green tick over an
+unasked question is how you lose an afternoon to it.
 
 That is the entire happy path. Everything below is optional.
 
