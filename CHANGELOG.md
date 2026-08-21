@@ -10,7 +10,21 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+### Added
+
+- Provider profiles carry `sign_in_paths`, the paths a provider redirects to
+  once it has accepted a client id and redirect URI. Google is the only profile
+  that ships one; subclass `ProviderQuirks` to add paths for a provider whose
+  behaviour you have observed.
+  ([#39](https://github.com/thesaadmirza/django-bastion/issues/39))
+
 ### Fixed
+
+- `--check-registration` reported a correctly registered redirect URI on Google
+  as unverifiable. Google answers a good authorization request with a 302 and
+  no HTML, so none of the sign-in form markers could match. The negative
+  direction always worked; it was the passing case that shrugged.
+  ([#39](https://github.com/thesaadmirza/django-bastion/issues/39))
 
 - **The Entra guide recommended `/common` and `/organizations` as issuers.**
   Neither can be configured: both declare a templated issuer that discovery
