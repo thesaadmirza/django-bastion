@@ -29,6 +29,29 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ### Added
 
+- **`bastion_doctor --check-registration` asks the provider whether your
+  callback URL is registered.** `redirect_uri_mismatch` is the most common way
+  an OIDC integration fails and the hardest to see from inside the application:
+  the settings are right, the URL is right, and the provider still refuses.
+  Nothing local can tell you whether a console edit propagated or landed on a
+  different client.
+
+  One authorization request answers it. No client secret is used and no token
+  is issued, because the flow is abandoned before the code is exchanged, and
+  the `state`, `nonce` and PKCE verifier are generated for the request and
+  thrown away — no transaction record exists, so there is nothing for a later
+  callback to replay. Off by default: it is the only check here that appears in
+  the provider's logs.
+
+  It asks about the same URL the report prints, from one derivation rather than
+  two, and refuses to run at all when no concrete host is knowable — asking
+  about a URL the deployment would never send is worse than not asking.
+
+  The classifier reports *inconclusive* rather than passing when it cannot read
+  the answer. That distinction is the point: Entra replies to a bad client id
+  with HTTP 200 and an HTML page carrying no OAuth error parameter, so treating
+  "no error seen" as success reported a broken deployment as healthy.
+
 - **A provider matrix**, at [docs/reference/providers.md](docs/reference/providers.md). Five profiles
   ship and they are not equally proven: `entra` has been run against Microsoft's
   live endpoints and a real tenant, `google` has had its public discovery
