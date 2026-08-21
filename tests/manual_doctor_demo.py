@@ -21,8 +21,8 @@ from django.core.management import call_command
 
 from bastion.connections import Connection
 from bastion.protocols.oidc.transaction import MemoryTransactionStore
-from tests.idp.provider import FakeIdP, google
-from tests.idp.transport import FakeTransport
+from bastion.testing.provider import FakeIdP, google
+from bastion.testing.transport import FakeTransport
 
 
 def connection_for(idp: FakeIdP, **kwargs) -> Connection:

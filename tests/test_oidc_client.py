@@ -15,8 +15,8 @@ from bastion.protocols.oidc.client import (
     exchange_code,
 )
 from bastion.protocols.oidc.transaction import MemoryTransactionStore, start_transaction
-from tests.idp.provider import FakeIdP
-from tests.idp.transport import FakeTransport
+from bastion.testing.provider import FakeIdP
+from bastion.testing.transport import FakeTransport
 
 TOKEN_ENDPOINT = "https://idp.example.test/token"
 REDIRECT_URI = "https://app.test/sso/callback/"

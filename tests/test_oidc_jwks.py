@@ -10,8 +10,8 @@ import pytest
 
 from bastion.exceptions import DiscoveryError, InsecureEndpoint, KeyNotFound
 from bastion.protocols.oidc import JWKSStore
-from tests.idp.keys import SigningKey
-from tests.idp.provider import FakeIdP
+from bastion.testing.keys import SigningKey
+from bastion.testing.provider import FakeIdP
 
 JWKS_URI = "https://idp.example.test/.well-known/jwks.json"
 

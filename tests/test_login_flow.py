@@ -17,8 +17,8 @@ from django.test import Client
 from bastion import connections as connections_module
 from bastion.connections import Connection
 from bastion.models import FederatedIdentity
-from tests.idp.provider import FakeIdP
-from tests.idp.transport import FakeTransport
+from bastion.testing.provider import FakeIdP
+from bastion.testing.transport import FakeTransport
 
 pytestmark = pytest.mark.django_db
 

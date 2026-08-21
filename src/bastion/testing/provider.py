@@ -14,8 +14,8 @@ import secrets
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from tests.idp import tokens
-from tests.idp.keys import SigningKey, generate_key
+from bastion.testing import tokens
+from bastion.testing.keys import SigningKey, generate_key
 
 Vendor = Literal["generic", "entra", "okta", "google", "keycloak"]
 

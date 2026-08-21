@@ -5,12 +5,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
-HASHES = {
+#: Annotated as a callable returning a hash rather than left to inference:
+#: the inferred value type is the abstract base, which cannot be instantiated.
+#: The same shape as `_HASHES` in protocols/oidc/jose.py, for the same reason.
+HASHES: dict[str, Callable[[], hashes.HashAlgorithm]] = {
     "RS256": hashes.SHA256,
     "RS384": hashes.SHA384,
     "RS512": hashes.SHA512,
@@ -61,18 +65,21 @@ class SigningKey:
 
     def public_jwk(self, *, include_meta: bool = True) -> dict[str, str]:
         if isinstance(self.public, rsa.RSAPublicKey):
-            numbers = self.public.public_numbers()
-            jwk = {"kty": "RSA", "n": b64u_uint(numbers.n), "e": b64u_uint(numbers.e)}
+            rsa_numbers = self.public.public_numbers()
+            jwk = {"kty": "RSA", "n": b64u_uint(rsa_numbers.n), "e": b64u_uint(rsa_numbers.e)}
         else:
-            numbers = self.public.public_numbers()
+            # A separate name, because the two number types share no attributes
+            # and reusing one variable makes the second branch unreadable to a
+            # checker and to a person.
+            ec_numbers = self.public.public_numbers()
             size = (self.public.curve.key_size + 7) // 8
             jwk = {
                 "kty": "EC",
                 "crv": "P-256",
-                "x": base64.urlsafe_b64encode(numbers.x.to_bytes(size, "big"))
+                "x": base64.urlsafe_b64encode(ec_numbers.x.to_bytes(size, "big"))
                 .rstrip(b"=")
                 .decode(),
-                "y": base64.urlsafe_b64encode(numbers.y.to_bytes(size, "big"))
+                "y": base64.urlsafe_b64encode(ec_numbers.y.to_bytes(size, "big"))
                 .rstrip(b"=")
                 .decode(),
             }

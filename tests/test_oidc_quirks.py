@@ -17,7 +17,7 @@ from bastion.protocols.oidc.quirks import (
     OktaQuirks,
     to_identity_claims,
 )
-from tests.idp.provider import FakeIdP
+from bastion.testing.provider import FakeIdP
 
 
 def normalise(claims: dict[str, Any], quirks: Any, issuer: str = "https://idp.example.test") -> Any:

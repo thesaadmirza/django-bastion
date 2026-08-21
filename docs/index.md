@@ -38,6 +38,8 @@ Task-oriented. Assume you know what you are doing.
 - Keycloak — not written yet
 - [Customising the pages](how-to/customising-pages.md) — how the base template is
   chosen, how to override a page, and which content is load-bearing
+- [Testing your integration](how-to/testing-your-integration.md) — the fake provider
+  that ships with the package, and how to reach the paths a real one will not produce
 
 ## Reference
 

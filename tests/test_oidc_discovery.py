@@ -12,8 +12,8 @@ from bastion.protocols.oidc.discovery import (
     discovery_url,
     validate_metadata,
 )
-from tests.idp.provider import FakeIdP
-from tests.idp.transport import FakeTransport
+from bastion.testing.provider import FakeIdP
+from bastion.testing.transport import FakeTransport
 
 ISSUER = "https://idp.example.test"
 

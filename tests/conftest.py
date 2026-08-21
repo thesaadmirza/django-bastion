@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from tests.idp import provider
-from tests.idp.keys import SigningKey, generate_key
-from tests.idp.provider import FakeIdP
+from bastion.testing import provider
+from bastion.testing.keys import SigningKey, generate_key
+from bastion.testing.provider import FakeIdP
 
 
 @pytest.fixture(scope="session")

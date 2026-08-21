@@ -10,6 +10,44 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+### Added
+
+- **`bastion.testing`: a fake identity provider, in the package.** Testing an
+  SSO integration means producing assertions no real provider will produce on
+  demand — an address the provider marks unverified, a group list truncated to
+  a Graph pointer, a replayed `state` — so those are the paths projects end up
+  not testing.
+
+  ```python
+  def test_an_unverified_address_is_refused(client):
+      rig = harness()
+      with rig.installed():
+          rig.login(client, email_verified=False)
+      assert SESSION_KEY not in client.session
+  ```
+
+  **No certificate and no local HTTPS server.** The report that asked for this
+  described building a self-signed cert and a merged CA bundle, because bastion
+  refuses a plain-http issuer and has no localhost exemption. That refusal
+  stays, and none of the scaffolding is needed: `Connection` takes its
+  transport as a field, so the fake is injected rather than served.
+
+  `harness()` gives a provider, a transport and a connection wired together;
+  `installed()` points the views at it and puts them back; `login()` drives the
+  whole flow. It reads the `state` and `nonce` out of the authorization URL,
+  which is ordinary public data — the version of this inside bastion's own
+  suite read them out of `connection.transactions._records`, and a helper that
+  needs a private attribute is one every integrator gets wrong.
+
+  Five vendor profiles mint what that vendor actually emits, and bastion's own
+  suite now runs on the same module rather than a private copy. See
+  [testing your integration](docs/how-to/testing-your-integration.md).
+
+  Malformed and hostile tokens are deliberately **not** included. `alg: none`,
+  algorithm confusion and key injection prove that *bastion* refuses them,
+  which says nothing about your deployment, and shipping them would commit this
+  package to an attack-token API with no reason to exist.
+
 ### Removed
 
 - **The `saml`, `ldap` and `scim` extras.** They were declared in the package

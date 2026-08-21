@@ -25,7 +25,7 @@ from bastion.protocols.oidc.validation import (
     validate_id_token,
     validate_userinfo,
 )
-from tests.idp.provider import DEFAULT_NOW, FakeIdP
+from bastion.testing.provider import DEFAULT_NOW, FakeIdP
 
 ISSUER = "https://idp.example.test"
 CLIENT_ID = "bastion-test-client"

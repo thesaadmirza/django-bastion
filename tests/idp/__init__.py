@@ -1,29 +1,25 @@
-"""A synthetic identity provider for the test suite.
+"""This project's own view of the fake provider.
 
-This exists because the cases that matter most cannot be produced on demand by
-a real IdP. No Entra tenant will emit a groups-overage claim because you asked
-it to, no provider will rotate a signing key mid-request, and none of them will
-hand you a token signed with `alg: none` so you can prove you reject it.
+The provider, its keys and the transport that serves it moved to
+``bastion.testing`` when the harness became a supported thing for other
+projects to import. One implementation, two audiences: this package re-exports
+it so the suite's existing imports keep working, and adds the part that stays
+private.
 
-So we mint our own, at the byte level.
-
-Deliberately hand-rolled rather than built on authlib or PyJWT: a JOSE library
-that is working correctly will *refuse* to produce most of the corpus below.
-You cannot test that `alg: none` is rejected using a library that will not
-serialise it. Everything here assembles the compact serialisation directly and
-signs with `cryptography` primitives, so we can produce tokens that are
-malformed, hostile, or simply illegal.
-
-Nothing in this package is importable from `bastion`. It is test scaffolding
-and it stays that way.
+That part is ``tokens``: `alg: none`, algorithm confusion, key injection, an
+unknown `crit`. They exist to prove bastion refuses them, which is this
+project's job to test and nobody else's.
 """
 
-from tests.idp.keys import SigningKey, generate_key
-from tests.idp.provider import FakeIdP
-from tests.idp.tokens import b64u, b64u_json, compact
+from bastion.testing.keys import SigningKey, generate_key
+from bastion.testing.provider import DEFAULT_NOW, FakeIdP
+from bastion.testing.tokens import b64u, b64u_json, compact
+from bastion.testing.transport import FakeTransport
 
 __all__ = [
+    "DEFAULT_NOW",
     "FakeIdP",
+    "FakeTransport",
     "SigningKey",
     "b64u",
     "b64u_json",
