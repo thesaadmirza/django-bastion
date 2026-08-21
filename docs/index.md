@@ -42,6 +42,8 @@ Task-oriented. Assume you know what you are doing.
 ## Reference
 
 - [Settings](reference/settings.md)
+- [Provider matrix](reference/providers.md) — what each provider gives you, and how far each profile has
+  actually been proven
 - [Audit event catalogue](reference/audit-events.md)
 
 ## Security operations
