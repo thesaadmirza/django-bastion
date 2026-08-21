@@ -81,11 +81,17 @@ Working around that is a known source of redirect loops and of the "authenticate
 We subclass `AdminSite` (the documented seam) and fail with a real 403 page that tells the person which
 group they're missing and who to ask.
 
-**Claims map to roles, and in 0.1 that mapping is deliberately small.** Two lists per connection,
-`staff_groups` and `superuser_groups`, matched against the group claim. That is all of it. The ordered rule
-engine with a serializable condition tree is the 0.2 design and is not built yet;
-[the roadmap](docs/explanation/roadmap.md) says what it will look like and which two approaches were
-already rejected.
+**Groups map to roles, where your provider sends groups.** Two lists per connection, `staff_groups` and
+`superuser_groups`, matched against the group claim. That is all of it. The ordered rule engine with a
+serializable condition tree is the 0.2 design and is not built yet; [the
+roadmap](docs/explanation/roadmap.md) says what it will look like and which two approaches were already
+rejected.
+
+The qualifier is load-bearing. **Google's ID token carries no group claim at all**, so on a Google
+connection those two lists cannot match anything and roles are assigned locally instead. That is not a
+bug to be fixed by configuration, and finding it out after wiring everything up is the reason
+[the provider matrix](docs/reference/providers.md) exists — it says what each profile gives you, and how
+far each has actually been proven.
 
 **An answer for the admins you already have.** Keying accounts on `(issuer, subject)` and never on
 email is the right default and it strands every existing administrator behind a second account on their
