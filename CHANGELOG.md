@@ -10,7 +10,22 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.2.
+### Changed
+
+- **The break-glass refusal path can no longer lose its timing equalisation to
+  a future edit.** The three branches that turn down an emergency login before
+  the password comparison each spent the equalising hash round in their own copy
+  of the same three lines. A fourth branch written without that line would still
+  have refused and still have audited, while answering a key derivation round
+  early. That is the account enumeration oracle 0.1.2 closed.
+
+  Those branches now refuse through a single helper that returns `NoReturn`, so
+  the hash round is not something a branch can forget and there is nothing to
+  fall through into. Audit outcomes and reasons are unchanged, as is the generic
+  reason the caller is given.
+
+  The round counting test gained the inactive account case, which was the one
+  refusal it had never measured.
 
 ## [0.1.2] - 2026-08-23
 
