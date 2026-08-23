@@ -10,7 +10,26 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.1.
+Nothing since 0.1.2.
+
+## [0.1.2] - 2026-08-23
+
+### Security
+
+- **Break-glass refused a username nobody held more slowly than one somebody
+  held.** Every branch that gave up before the password comparison hashed a
+  fixed string and then verified the supplied password against it, which is two
+  rounds of key derivation where a real comparison spends one. The work meant to
+  hide which accounts exist was measurable, and it pointed the wrong way.
+
+  Refusing branches now hash once and discard the result. The endpoint is off by
+  default, restricted by network and throttled per address, so an attacker has
+  to be able to reach it and stay under the throttle before any of this is
+  reachable at all.
+
+  The test that covered this asserted hashing had happened, which stayed true
+  the whole time the count was wrong. It counts rounds now and compares a
+  refused attempt against a real one.
 
 ## [0.1.1] - 2026-08-21
 
@@ -907,7 +926,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a9...v0.1.0
 [0.0.1a9]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a8...v0.0.1a9

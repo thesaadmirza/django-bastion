@@ -8,7 +8,6 @@ import logging
 from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.hashers import check_password
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
@@ -240,18 +239,18 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
         # Hash anyway. Skipping the work here is a timing oracle that says
         # whether the account exists, and this endpoint is one an attacker
         # would very much like to enumerate.
-        check_password(password, _dummy_hash())
+        _equalise(user_model, password)
         _record(None, Outcome.FAILURE, "unknown-account", request)
         raise BreakGlassDenied("credentials") from None
 
     account = BreakGlassAccount.objects.active().filter(user=user).first()
     if account is None:
-        check_password(password, _dummy_hash())
+        _equalise(user_model, password)
         _record(user, Outcome.DENIED, "not-a-break-glass-account", request)
         raise BreakGlassDenied("credentials")
 
     if not user.is_active:
-        check_password(password, _dummy_hash())
+        _equalise(user_model, password)
         _record(user, Outcome.DENIED, "inactive", request)
         raise BreakGlassDenied("credentials")
 
@@ -265,10 +264,25 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
     return user
 
 
-def _dummy_hash() -> str:
-    from django.contrib.auth.hashers import make_password
+def _equalise(user_model: Any, password: str) -> None:
+    """Spend the same hashing work a real comparison would, and discard it.
 
-    return make_password("timing-equalisation")
+    Every branch that refuses before reaching ``user.check_password`` calls
+    this, so the cost of an attempt does not say which branch was taken.
+
+    One KDF round, matching the one the real comparison spends. The previous
+    version hashed a fixed string with ``make_password`` and then verified the
+    supplied password against it, which is two rounds -- so a name nobody held
+    answered measurably *slower* than one somebody did, and the oracle this
+    exists to close ran backwards.
+
+    ``set_password`` on an unsaved instance is Django's own idiom for this
+    (``ModelBackend.authenticate``, #20760). It reads the hasher from settings
+    at call time, so a deployment or a test that changes ``PASSWORD_HASHERS``
+    gets the matching cost rather than one cached from an earlier
+    configuration.
+    """
+    user_model().set_password(password)
 
 
 def _record(user: Any, outcome: Outcome, reason: str, request: Any) -> None:
