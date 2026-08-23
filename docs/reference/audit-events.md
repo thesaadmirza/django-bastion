@@ -32,7 +32,7 @@ rules or compliance evidence reference it.
 | `auth.login.failed` | Authentication did not complete | Emitted on the failure path too — a failed login is the event most worth having |
 | `auth.login.denied` | Authenticated, then refused | **Kept distinct from failure.** An authorisation denial and an authentication failure are different detections under SOC 2 CC7.2; collapsing them loses the signal that someone's credentials work but their access does not |
 | `auth.logout` | A session was ended deliberately | `context.rp_initiated` says whether the provider's own session was ended too. False means only the local session went, so the person can be signed straight back in without a prompt, and an investigation into "they said they logged out" needs to know which happened |
-| `auth.session.revoked` | **Reserved, not emitted yet.** Session ended by an administrator or the provider | |
+| `auth.session.revoked` | The provider ended a session through back-channel logout | `context.scope` is `sid` for one session or `subject` for every session that identity held, and `context.sessions_ended` is how many actually went. The count is sessions the store confirmed, not rows matched, so a zero is a real answer: the provider ended something this deployment had already forgotten |
 | `auth.assertion.rejected` | Signature, issuer, audience, nonce, replay or clock validation failed | High signal. This is what a token forgery attempt looks like |
 | `auth.protocol.fallback` | Break-glass was used or attempted | Rare by design, critical severity, always alerts |
 | `auth.mfa.required` | **Reserved, not emitted yet.** A connection requires a second factor | |
