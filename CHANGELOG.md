@@ -10,7 +10,45 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.3.
+### Added
+
+- **OIDC Back-Channel Logout.** Disabling somebody at the identity provider did
+  not end the Django session they already held. Their next sign-in failed and
+  everything they had open kept working until the cookie expired, which is the
+  gap behind "we cannot tell you when access actually ended".
+
+  The provider now posts a signed logout token to
+  `/sso/backchannel-logout/`, and the session it names stops working. A `sid`
+  ends that one session; a `sub` with no `sid` ends every session that identity
+  holds, which is the broader reading on purpose. Both are recorded as
+  `auth.session.revoked` with the scope and a count of the sessions actually
+  ended — a count of what the store confirmed, not of rows matched, so a zero
+  is a real answer rather than a silent miss.
+
+  There is no new setting. A URL the provider has not been told about receives
+  nothing, and one it has been told about is the switch, so a flag would only
+  be a second thing to get wrong. See
+  [the how-to](docs/how-to/back-channel-logout.md) for registration, including
+  the Keycloak option that has to be on before it sends a `sid` at all.
+
+  Two things worth knowing. Sessions that existed before this is deployed are
+  not in the index and expire normally; nothing revokes them. And the
+  `signed_cookies` session engine cannot support it, because there is no
+  server-side session to delete — `bastion.W030` already warns about that
+  engine for the same reason.
+
+  Logout tokens are validated by their own code rather than by the ID token
+  path. Four of the rules exist only here and two of them invert what an ID
+  token does: `events` is required, `nonce` is *forbidden* rather than
+  optional, one of `sub` or `sid` must be present, and `jti` is required so the
+  token can be used exactly once. Sharing a validator is how the forbidden
+  `nonce` ends up unchecked, and a logout token carrying one is an ID token
+  being replayed at the endpoint by somebody hoping the two paths agree.
+
+  Single use is enforced by a unique constraint rather than a read followed by
+  a write, so two copies arriving together cannot both pass. The table stays
+  bounded because a logout token older than five minutes is refused on age
+  alone, and rows past that are purged as the endpoint runs.
 
 ## [0.1.3] - 2026-08-23
 

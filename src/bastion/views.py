@@ -271,8 +271,17 @@ def logout(request: HttpRequest) -> HttpResponse:
     # the two things the provider request needs.
     name = request.session.get(SESSION_CONNECTION_KEY)
     id_token = request.session.get(SESSION_ID_TOKEN_KEY)
+    # The session key goes too, and it is only readable until auth.logout()
+    # cycles it. Without dropping the index row here, the table keeps one per
+    # sign-out forever and every later revocation walks past them.
+    ending = request.session.session_key
 
     auth_logout(request)
+
+    if ending:
+        from bastion import sessions as session_index
+
+        session_index.forget(ending)
 
     destination: str | None = None
     if name:
@@ -384,3 +393,50 @@ def _establish_session(
     request.session[SESSION_MFA_KEY] = result.identity.mfa_satisfied
     if result.id_token:
         request.session[SESSION_ID_TOKEN_KEY] = result.id_token
+
+    _index_session(request, connection, result)
+
+
+def _index_session(request: HttpRequest, connection: Connection, result: LoginResult) -> None:
+    """Record which provider session this Django session came from.
+
+    Back-channel logout arrives naming a ``sid`` or a ``sub``, and Django's
+    session table is keyed on neither, so the mapping has to be written here or
+    it does not exist when it is needed.
+
+    ``sid`` is optional in the specification and several providers omit it. A
+    row is written either way: without one the session can still be ended by
+    subject, which is what a logout token carrying only ``sub`` asks for.
+    """
+    from bastion import sessions as session_index
+    from bastion.models import FederatedIdentity
+
+    # filter(), not the for_claims() queryset method that says the same thing.
+    # as_manager() builds the manager dynamically, so a checker without the
+    # django-stubs plugin cannot see the custom method on it -- which is the
+    # population the pyright job exists to speak for. The backend resolves this
+    # same identity the same way.
+    identity = (
+        FederatedIdentity.objects.filter(
+            issuer=result.identity.issuer, subject=result.identity.subject
+        )
+        .only("id")
+        .first()
+    )
+    if identity is None:
+        # The backend writes this row during authenticate(), so reaching here
+        # means a custom backend resolved the user without one. Nothing to
+        # index against, and refusing the login over it would be worse.
+        logger.warning(
+            "No federated identity for %s; this session cannot be ended by back-channel logout.",
+            result.identity.subject,
+        )
+        return
+
+    sid = result.identity.raw.get("sid")
+    session_index.record(
+        identity=identity,
+        session_key=request.session.session_key or "",
+        sid=sid if isinstance(sid, str) else "",
+        connection=connection.identifier,
+    )

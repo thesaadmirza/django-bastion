@@ -89,6 +89,19 @@ class Harness:
             patch("bastion.views.get_connection", lambda name=None: self.connection),
             patch("bastion.views.get_setting", only_connections),
             patch("bastion.connections.get_connection", lambda name=None: self.connection),
+            # The back-channel logout endpoint has no session and no URL
+            # parameter to resolve from, so it looks the connection up by the
+            # issuer in the token. Patching only get_connection would leave
+            # that endpoint reading real settings while every other view read
+            # the fake.
+            patch(
+                "bastion.connections.all_connections",
+                lambda: {self.connection.identifier: self.connection},
+            ),
+            patch(
+                "bastion.backchannel.all_connections",
+                lambda: {self.connection.identifier: self.connection},
+            ),
         ):
             yield self
 
