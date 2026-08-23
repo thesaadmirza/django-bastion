@@ -10,6 +10,17 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+Nothing since 0.1.4.
+
+## [0.1.4] - 2026-08-23
+
+**This release adds a migration.** Run `python manage.py migrate` before
+registering the logout URL with your provider. The endpoint needs two tables
+that do not exist until you do, and a provider posting logout tokens at a URL
+that errors will keep retrying. Worth saying plainly because this is a feature
+people turn on during an incident, which is the worst moment to discover a
+pending migration.
+
 ### Added
 
 - **OIDC Back-Channel Logout.** Disabling somebody at the identity provider did
@@ -1005,7 +1016,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.0...v0.1.1
