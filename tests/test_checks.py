@@ -485,6 +485,79 @@ class TestSessionEngine:
         assert checks.check_session_engine(None) == []
 
 
+SHARED_CACHE = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache"}}
+DUMMY_CACHE = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
+
+
+class TestTransactionStore:
+    """The store that has to survive the round trip to the provider.
+
+    ``state`` is minted on one worker and read on whichever one the callback
+    lands on. A store the workers do not share fails intermittently, at the
+    callback, with nothing wrong in the settings -- which is the hardest shape
+    of bug to attribute, so it is worth catching at startup.
+    """
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}}, CACHES=SHARED_CACHE)
+    def test_a_shared_cache_passes(self) -> None:
+        assert checks.check_transaction_store(None) == []
+
+    @override_settings(BASTION={"CONNECTIONS": {}}, CACHES=DUMMY_CACHE)
+    def test_no_connections_is_not_checked(self) -> None:
+        """Nothing here can start a login, so the cache behind the store is not
+        this project's problem yet. The early return also keeps the OIDC import
+        off every manage.py invocation."""
+        assert checks.check_transaction_store(None) == []
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}})
+    def test_locmem_warns(self) -> None:
+        """Django's default cache, and correct on exactly one worker.
+
+        A warning rather than an error because worker count is not visible from
+        here, and a single-worker deployment is a real configuration rather
+        than a mistake.
+        """
+        assert _ids(checks.check_transaction_store(None)) == {"bastion.W034"}
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD}}, CACHES=DUMMY_CACHE)
+    def test_dummy_cache_is_an_error(self) -> None:
+        """DummyCache reports every read as a miss, so no login can ever
+        complete. There is no deployment where this is what was meant."""
+        assert _ids(checks.check_transaction_store(None)) == {"bastion.E033"}
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"corp": GOOD}},
+        CACHES={"other": {"BACKEND": "django.core.cache.backends.db.DatabaseCache"}},
+    )
+    def test_a_missing_alias_is_an_error(self) -> None:
+        """The store defaults to the 'default' alias, and a project whose
+        CACHES does not define one would fail every callback."""
+        assert _ids(checks.check_transaction_store(None)) == {"bastion.E033"}
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"corp": GOOD}, "ADMIN": {"enabled": False}},
+        CACHES=DUMMY_CACHE,
+        ROOT_URLCONF="tests.empty_urls",
+    )
+    def test_an_unreachable_project_downgrades_to_a_warning(self) -> None:
+        """Same split E027/W027 makes. The admin integration is off and the
+        login routes are not wired, so no login can start here to fail."""
+        assert _ids(checks.check_transaction_store(None)) == {"bastion.W033"}
+
+    @override_settings(BASTION={"CONNECTIONS": {"corp": GOOD, "partner": GOOD}}, CACHES=DUMMY_CACHE)
+    def test_connections_sharing_an_alias_are_reported_once(self) -> None:
+        """Two connections on one cache is one thing to fix, not two."""
+        assert len(checks.check_transaction_store(None)) == 1
+
+    @override_settings(
+        BASTION={"CONNECTIONS": {"corp": dict(GOOD, provider="nope")}}, CACHES=DUMMY_CACHE
+    )
+    def test_a_connection_that_will_not_build_is_left_to_E027(self) -> None:
+        """It has no store to look at, and saying so again under a second id
+        would be two findings for one broken entry."""
+        assert checks.check_transaction_store(None) == []
+
+
 class TestIdentityKey:
     @override_settings(BASTION={"IDENTITY": {"KEY": ("email",)}})
     def test_email_as_join_key_is_an_error(self) -> None:

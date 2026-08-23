@@ -289,12 +289,15 @@ is the gate to put in a deployment pipeline.
 | `bastion.E028` | The admin names a connection that is not configured, while SSO is live |
 | `bastion.W028` | The admin names a connection that is not configured, while SSO is off |
 | `bastion.E029` | `IDENTITY["LINKING_POLICY"]` is unknown, or is `verified_email_once` with no pinned domains |
+| `bastion.E033` | Logins in progress are stored in a cache that is missing from `CACHES` or is `DummyCache`, and something in this project can reach a connection |
+| `bastion.W033` | The same unusable transaction cache, where nothing can reach a connection |
 | `bastion.E100` | Break-glass enabled with no alert sink |
 | `bastion.E101` | Break-glass throttling on with no audit database sink to count from |
 | `bastion.E102` | `ALLOWED_NETWORKS` has an entry that is not a network |
 | `bastion.W030` | Session engine cannot revoke individual sessions |
 | `bastion.W031` | A password backend serves other parts of the project, declared via `ADMIN["local_login"]` |
 | `bastion.W032` | Break-glass enabled with an empty `ALLOWED_NETWORKS` |
+| `bastion.W034` | Logins in progress are stored in `LocMemCache`, which is per-process and breaks on more than one worker |
 
 ## Not yet implemented
 

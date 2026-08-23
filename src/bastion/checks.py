@@ -596,6 +596,138 @@ def check_session_engine(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
     return []
 
 
+def _store_unusable(detail: str, *, hint: str, reachable: bool) -> CheckMessage:
+    """``E033`` where a request can reach a connection, ``W033`` where none can.
+
+    The same split ``E027``/``W027`` makes, for the same reason: a checkout with
+    the admin integration off and ``bastion.urls`` unrouted has nothing that
+    could run this login, and refusing to boot over it would be reporting on a
+    deployment that does not exist.
+    """
+    if reachable:
+        return Error(f"{detail}.", hint=hint, id="bastion.E033")
+    return Warning(
+        f"{detail}, though nothing in this project can currently reach a connection.",
+        hint=(
+            f"{hint} This is a warning rather than an error because "
+            'ADMIN["enabled"] is off and bastion.urls is not routed, so no login '
+            "can start here. It becomes an error in the environment that serves one."
+        ),
+        id="bastion.W033",
+    )
+
+
+@register(Tags.security)
+def check_transaction_store(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
+    """Invariant 33: the store holding a login in flight has to be shared.
+
+    ``state`` is minted by the worker that starts the login and read by
+    whichever worker the provider's callback lands on. Those are the same
+    process only by chance, so a store the workers do not share turns that
+    chance into the failure mode: some logins complete and the rest die at the
+    callback on ``TransactionNotFound``, intermittently, with every setting
+    looking correct.
+
+    ``MemoryTransactionStore`` says this in its own docstring, and anyone who
+    reaches for it has read that. The default is ``CacheTransactionStore``,
+    which looks like it does not have the problem and then inherits it from
+    whatever cache it is pointed at -- and Django's own default cache is
+    ``LocMemCache``, which is per-process. So a project that never configured
+    ``CACHES`` gets the memory store's behaviour without ever choosing it,
+    which is the case this check exists for.
+    """
+    connections = get_setting("CONNECTIONS")
+    if not connections:
+        # The same early return check_connections makes, for the same reason:
+        # the imports below reach the OIDC package and pull in cryptography
+        # behind it, on every manage.py command in every environment --
+        # including the ones with nothing here to check.
+        return []
+
+    from django.core.cache import InvalidCacheBackendError, caches
+    from django.core.cache.backends.dummy import DummyCache
+    from django.core.cache.backends.locmem import LocMemCache
+
+    from bastion.connections import build_connection
+    from bastion.protocols.oidc.transaction import CacheTransactionStore
+
+    messages: list[CheckMessage] = []
+    reachable = _connections_are_reachable()
+    seen: set[str] = set()
+
+    for identifier, config in sorted(connections.items()):
+        try:
+            # Not get_connection(), for the reason check_connections gives:
+            # a check should not leave a populated cache behind it.
+            connection = build_connection(identifier, config)
+        except ConfigurationError:  # noqa: S112 - reported already, see below
+            # Swallowed on purpose rather than logged. check_connections has
+            # already turned this exact exception into E027 or W027, incomplete
+            # entries included, so logging it here would put the same failure in
+            # front of the same reader twice under a less useful id. A
+            # connection that will not build has no store to look at either.
+            continue
+
+        store = connection.transactions
+        if not isinstance(store, CacheTransactionStore):
+            # Supplied in code rather than defaulted, so somebody chose it and
+            # knows what backs it. The memory store documents its own limit.
+            continue
+
+        alias = store.cache_alias
+        # One message per alias. Ten connections sharing the default cache is
+        # one thing to fix, not ten.
+        if alias in seen:
+            continue
+        seen.add(alias)
+
+        try:
+            backend = caches[alias]
+        except InvalidCacheBackendError:
+            messages.append(
+                _store_unusable(
+                    f"Logins in progress are stored in cache {alias!r}, which is not in CACHES",
+                    hint=(
+                        "Every login fails at the callback: the transaction minted when the "
+                        f"flow started is looked up in a cache that does not exist. Add "
+                        f"{alias!r} to CACHES, or point the connection's transaction store "
+                        "at an alias that is there."
+                    ),
+                    reachable=reachable,
+                )
+            )
+            continue
+
+        if isinstance(backend, DummyCache):
+            messages.append(
+                _store_unusable(
+                    f"Logins in progress are stored in cache {alias!r}, which is DummyCache",
+                    hint=(
+                        "DummyCache discards every write and reports every read as a miss, "
+                        "so the transaction is gone before the provider redirects back and "
+                        "no login can complete. Point the transaction store at a real cache."
+                    ),
+                    reachable=reachable,
+                )
+            )
+        elif isinstance(backend, LocMemCache):
+            messages.append(
+                Warning(
+                    f"Logins in progress are stored in cache {alias!r}, which is LocMemCache.",
+                    hint=(
+                        "LocMemCache is per-process. On a single worker this is correct and "
+                        "you can silence this. On more than one, a callback landing on a "
+                        "worker other than the one that started the login finds no "
+                        "transaction, so logins fail intermittently and in proportion to "
+                        "the worker count. Use a cache the workers share, such as Redis or "
+                        "memcached."
+                    ),
+                    id="bastion.W034",
+                )
+            )
+    return messages
+
+
 @register(Tags.security)
 def check_identity_key(app_configs: Any, **kwargs: Any) -> list[CheckMessage]:
     """Invariant 26: never key accounts on a mutable attribute."""
