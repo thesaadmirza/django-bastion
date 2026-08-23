@@ -107,35 +107,65 @@ class TestAuthentication:
         ("username", "case"),
         [("nobody", "unknown account"), ("ordinary", "not flagged")],
     )
-    def test_a_refused_path_still_hashes(
+    def test_a_refused_path_hashes_exactly_as_much_as_a_real_one(
         self, enabled, operator, monkeypatch, username: str, case: str
     ) -> None:
         """Timing equalisation, asserted structurally rather than measured.
 
         Returning early without hashing tells an attacker, by response time,
         whether the account exists and whether it is a break-glass account.
-        Both are things this endpoint should not answer.
 
-        A statistical timing test would be flaky on a shared runner and slow
-        everywhere; asserting the work happens is the property that actually
-        needs protecting from a future refactor.
+        Hashing *more* than the real path answers the same question with the
+        sign reversed, which is what this used to do: the refused branches built
+        a throwaway hash and then verified against it, spending two KDF rounds
+        where a real comparison spends one. A name nobody held came back
+        measurably slower than one somebody did.
+
+        So the assertion is on the count rather than on presence, which is the
+        version of this property that would have caught that. A statistical
+        timing test would be flaky on a shared runner and slow everywhere;
+        counting the rounds is what needs protecting from a future refactor.
         """
         User.objects.create_user(username="ordinary", password="a-real-password")
 
-        calls: list[int] = []
-        from bastion.breakglass import service
+        # Counted on the hasher itself rather than on ``make_password`` or
+        # ``check_password``. Those two are imported by value into several
+        # namespaces, so patching any one of them counts only the callers that
+        # happen to resolve through it and reports zero for the rest -- which
+        # reads as "no hashing happened" when the truth is "hashing happened
+        # somewhere this test could not see".
+        #
+        # ``encode`` is where the KDF round is actually spent, and every route
+        # to hashing goes through it: ``make_password`` calls it once, and
+        # ``verify`` calls it once before comparing. So the count is rounds.
+        from django.contrib.auth.hashers import get_hasher
 
-        real = service.check_password
-        monkeypatch.setattr(
-            service,
-            "check_password",
-            lambda *args, **kwargs: (calls.append(1), real(*args, **kwargs))[1],
-        )
+        hasher = type(get_hasher())
+        rounds: list[str] = []
+
+        def counting(real: Any) -> Any:
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                rounds.append("encode")
+                return real(*args, **kwargs)
+
+            return wrapper
+
+        monkeypatch.setattr(hasher, "encode", counting(hasher.encode))
 
         with pytest.raises(BreakGlassDenied):
             authenticate_break_glass(username=username, password="wrong")
+        refused = len(rounds)
 
-        assert calls, f"no password hash performed on the {case} path"
+        rounds.clear()
+        with pytest.raises(BreakGlassDenied):
+            authenticate_break_glass(username="firefighter", password="wrong")
+        genuine = len(rounds)
+
+        assert refused, f"no password hash performed on the {case} path"
+        assert refused == genuine, (
+            f"the {case} path spends {refused} hashing rounds against {genuine} "
+            "for an account that exists, which is an enumeration oracle"
+        )
 
     def test_the_reason_is_never_the_message_shown(self, enabled, operator) -> None:
         """Which of the gates was failed is audit-record information. Telling

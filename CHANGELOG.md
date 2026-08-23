@@ -10,7 +10,22 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.1.
+### Security
+
+- **Break-glass refused a username nobody held more slowly than one somebody
+  held.** Every branch that gave up before the password comparison hashed a
+  fixed string and then verified the supplied password against it, which is two
+  rounds of key derivation where a real comparison spends one. The work meant to
+  hide which accounts exist was measurable, and it pointed the wrong way.
+
+  Refusing branches now hash once and discard the result. The endpoint is off by
+  default, restricted by network and throttled per address, so an attacker has
+  to be able to reach it and stay under the throttle before any of this is
+  reachable at all.
+
+  The test that covered this asserted hashing had happened, which stayed true
+  the whole time the count was wrong. It counts rounds now and compares a
+  refused attempt against a real one.
 
 ## [0.1.1] - 2026-08-21
 
