@@ -10,6 +10,10 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+Nothing since 0.1.2.
+
+## [0.1.2] - 2026-08-23
+
 ### Security
 
 - **Break-glass refused a username nobody held more slowly than one somebody
@@ -922,7 +926,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a9...v0.1.0
 [0.0.1a9]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a8...v0.0.1a9
