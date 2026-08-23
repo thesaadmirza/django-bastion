@@ -75,6 +75,7 @@ CHECK_IDS = {
     "bastion.E027",
     "bastion.E028",
     "bastion.E029",
+    "bastion.E033",
     "bastion.E100",
     "bastion.E101",
     "bastion.E102",
@@ -83,6 +84,8 @@ CHECK_IDS = {
     "bastion.W030",
     "bastion.W031",
     "bastion.W032",
+    "bastion.W033",
+    "bastion.W034",
 }
 
 #: Keys that were removed or renamed and are still refused by name. The policy
