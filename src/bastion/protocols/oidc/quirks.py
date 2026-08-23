@@ -6,6 +6,19 @@ MFA, because the providers do not agree on any of the three. A package that
 ships one generic path and calls the rest configuration is quietly wrong on
 every deployment that is not the one it was written against.
 
+``GenericQuirks`` is configurable, which is not a retreat from that. The
+difference is who supplies the answer. Nothing here inspects a token to work
+out which claim looks like a group list; a deployment reads its provider's
+documentation and writes the name down, and until it does the defaults stay
+spec-shaped and wrong for most providers. Declared beats sniffed, because the
+sniffing version grants staff from whichever claim resembled a group list, and
+an attacker only has to influence one claim for that to be theirs.
+
+Two ways to answer, then. A profile in ``REGISTRY`` for a provider whose quirks
+this project has taken on and will maintain, and configuration for the far
+larger number it has not. A provider whose only difference is where its groups
+live does not need a profile; that is what ``groups_claim`` is for.
+
 Each class here answers four questions about a token's claims:
 
 - which claim is the stable subject, and what is it called
@@ -30,9 +43,34 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from bastion.claims import GroupFormat, IdentityClaims, Verified
-from bastion.exceptions import ClaimValidationError
+from bastion.exceptions import ClaimValidationError, ConfigurationError
 
 GroupResult = tuple[tuple[str, ...], GroupFormat, bool]
+
+
+def _claim_name(value: Any, setting: str) -> str:
+    """A claim name has to be a non-empty string, and nothing else.
+
+    Checked rather than trusted because these arrive from settings. An empty
+    name reads every token as having no such claim, which for ``groups_claim``
+    means everybody is in no groups and every group-derived privilege quietly
+    disappears -- a failure that looks like a provider problem for as long as
+    nobody thinks to check the setting.
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigurationError(f"{setting} must be a non-empty claim name, got {value!r}")
+    return value
+
+
+def _group_format(value: str | GroupFormat) -> GroupFormat:
+    """Accept the enum or the string a settings file can hold."""
+    if isinstance(value, GroupFormat):
+        return value
+    try:
+        return GroupFormat(value)
+    except ValueError:
+        known = ", ".join(sorted(member.value for member in GroupFormat))
+        raise ConfigurationError(f"groups_format {value!r} is not one of: {known}") from None
 
 
 def _string_list(value: Any) -> tuple[str, ...]:
@@ -53,6 +91,18 @@ class ProviderQuirks(ABC):
 
     #: Claim carrying group membership.
     groups_claim: str = "groups"
+
+    #: What the strings in that claim mean. A profile that knows says so; the
+    #: default is honest rather than optimistic, because a mapping rule written
+    #: against display names silently matches nothing on a provider emitting
+    #: GUIDs and the failure looks like "that person is in no groups".
+    groups_format: GroupFormat = GroupFormat.UNKNOWN
+
+    #: Claim carrying the address, and the one carrying the provider's opinion
+    #: of whether it is verified. Named rather than hardcoded because they move:
+    #: an Auth0 tenant with a custom namespace puts both behind a URI prefix.
+    email_claim: str = "email"
+    email_verified_claim: str = "email_verified"
 
     #: Exact paths, on the authorization endpoint's own origin, that this
     #: provider redirects to once it has accepted a client id and redirect URI.
@@ -81,14 +131,24 @@ class ProviderQuirks(ABC):
         """
 
     def groups(self, claims: Mapping[str, Any]) -> GroupResult:
-        return _string_list(claims.get(self.groups_claim)), GroupFormat.UNKNOWN, True
+        return _string_list(claims.get(self.groups_claim)), self.groups_format, True
+
+    def email(self, claims: Mapping[str, Any]) -> str | None:
+        value = claims.get(self.email_claim)
+        return value if isinstance(value, str) else None
 
     def email_verified(self, claims: Mapping[str, Any]) -> Verified:
-        value = claims.get("email_verified")
+        value = claims.get(self.email_verified_claim)
         if value is True:
             return Verified.YES
         if value is False:
             return Verified.NO
+        # Some providers send the string rather than the boolean. Read those
+        # two spellings and nothing else: anything further is guessing at what
+        # a provider meant, on the claim that decides whether an address is
+        # good enough to adopt an existing administrator's account.
+        if isinstance(value, str) and value.lower() in {"true", "false"}:
+            return Verified.YES if value.lower() == "true" else Verified.NO
         return Verified.UNKNOWN
 
     def mfa_satisfied(self, claims: Mapping[str, Any]) -> bool:
@@ -96,15 +156,88 @@ class ProviderQuirks(ABC):
 
 
 class GenericQuirks(ProviderQuirks):
-    """Spec-conformant defaults. Correct for very little in practice."""
+    """Spec defaults out of the box, and the profile you configure otherwise.
+
+    Left alone this is still what the module docstring says it is: correct for
+    very little, because no provider agrees on where the interesting claims
+    live. Configured, it is how a provider nobody has written a class for gets
+    used without writing one.
+
+    That distinction is the whole design. The claim names are *declared* by the
+    deployment, never sniffed from the token. Guessing which claim holds the
+    groups by looking for one that resembles a group list is how a package
+    ends up granting staff from an attacker-influenced claim, so the only
+    supported answer is that somebody who read their provider's documentation
+    writes the name down.
+
+    Configured through ``quirks_kwargs`` on the connection::
+
+        "corp": {
+            "provider": "generic",
+            "issuer": "https://example.auth0.com/",
+            "client_id": env("CLIENT_ID"),
+            "quirks_kwargs": {
+                "groups_claim": "https://example.com/groups",
+                "groups_format": "display_name",
+                "expected_claims": {"org_id": "org_abc123"},
+            },
+        }
+
+    ``expected_claims`` is the generic form of the tenant pin that ``entra``
+    and ``google`` hardcode. Without one, a multi-tenant provider will happily
+    authenticate somebody from a tenant you have never heard of, and every
+    check downstream will agree that their token was perfectly valid.
+    """
 
     identifier = "generic"
 
+    def __init__(
+        self,
+        *,
+        subject_claim: str = "sub",
+        groups_claim: str = "groups",
+        groups_format: str | GroupFormat = GroupFormat.UNKNOWN,
+        email_claim: str = "email",
+        email_verified_claim: str = "email_verified",
+        mfa_methods: Sequence[str] | None = None,
+        expected_claims: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.subject_claim = _claim_name(subject_claim, "subject_claim")
+        self.groups_claim = _claim_name(groups_claim, "groups_claim")
+        self.groups_format = _group_format(groups_format)
+        self.email_claim = _claim_name(email_claim, "email_claim")
+        self.email_verified_claim = _claim_name(email_verified_claim, "email_verified_claim")
+        if mfa_methods is not None:
+            if not mfa_methods:
+                raise ConfigurationError(
+                    "mfa_methods is empty, which would mean no assertion ever "
+                    "satisfies require_mfa. Leave it unset for the defaults."
+                )
+            self.mfa_methods = frozenset(mfa_methods)
+        self.expected_claims = dict(expected_claims or {})
+
     def subject(self, claims: Mapping[str, Any]) -> tuple[str, str]:
-        subject = claims.get("sub")
+        subject = claims.get(self.subject_claim)
         if not isinstance(subject, str) or not subject:
-            raise ClaimValidationError("sub is missing")
-        return subject, "sub"
+            raise ClaimValidationError(
+                f"{self.subject_claim!r} is missing or is not a string, so this "
+                "token carries no stable identifier to key an account on."
+            )
+        return subject, self.subject_claim
+
+    def check(self, claims: Mapping[str, Any]) -> None:
+        """Pin whatever claims the deployment says identify its tenant.
+
+        Compared exactly, and against a value from configuration rather than
+        anything in the token. A provider that serves more than one
+        organisation issues perfectly valid tokens for all of them, so without
+        this every other check passes and the wrong tenant gets in.
+        """
+        for name, expected in self.expected_claims.items():
+            if claims.get(name) != expected:
+                raise ClaimValidationError(
+                    f"claim {name!r} does not match the value this connection pins"
+                )
 
 
 class EntraQuirks(ProviderQuirks):
@@ -272,6 +405,43 @@ REGISTRY: dict[str, type[ProviderQuirks]] = {
 }
 
 
+def resolve(provider: str) -> type[ProviderQuirks]:
+    """A registry name, or an import path to a class of your own.
+
+    Two ways in rather than one, because a name in this registry is a promise
+    this project maintains and an import path is not. A provider with a quirk
+    that cannot be expressed as a claim name -- a subject that has to be
+    assembled from two claims, a group list that arrives base64-encoded --
+    needs real code, and needing real code should not mean forking the package
+    or monkey-patching this dict at import time.
+
+    The path is refused unless it names a ``ProviderQuirks`` subclass, so a
+    typo pointing at something unrelated fails at startup with a message
+    saying so, rather than at the first login with an AttributeError.
+    """
+    if provider in REGISTRY:
+        return REGISTRY[provider]
+    if "." not in provider:
+        raise ConfigurationError(
+            f"unknown provider {provider!r}. Known: {sorted(REGISTRY)}. "
+            "An import path to a ProviderQuirks subclass is also accepted."
+        )
+
+    from django.utils.module_loading import import_string
+
+    try:
+        loaded = import_string(provider)
+    except ImportError as exc:
+        raise ConfigurationError(f"could not import provider {provider!r}: {exc}") from exc
+
+    if not (isinstance(loaded, type) and issubclass(loaded, ProviderQuirks)):
+        raise ConfigurationError(
+            f"provider {provider!r} is not a ProviderQuirks subclass. "
+            "Subclass bastion.protocols.oidc.quirks.ProviderQuirks."
+        )
+    return loaded
+
+
 def to_identity_claims(
     claims: Mapping[str, Any], *, quirks: ProviderQuirks, issuer: str
 ) -> IdentityClaims:
@@ -287,14 +457,14 @@ def to_identity_claims(
             return None
         return dt.datetime.fromtimestamp(value, tz=dt.UTC)
 
-    email = claims.get("email")
+    email = quirks.email(claims)
     name = claims.get("name") or claims.get("preferred_username")
 
     return IdentityClaims(
         issuer=issuer,
         subject=subject,
         subject_source=source,
-        email=email if isinstance(email, str) else None,
+        email=email,
         email_verified=quirks.email_verified(claims),
         display_name=name if isinstance(name, str) else None,
         groups=groups,

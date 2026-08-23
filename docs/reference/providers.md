@@ -85,8 +85,79 @@ server, and confirm one login carries it before relying on mapping.
 which is the correct direction and an outage if you turn it on without checking. Drive one sign-in and
 look at the claim before enabling it.
 
-## Adding a provider
+## Using a provider that is not listed
+
+Five profiles ship and there are far more than five identity providers. The ones that are missing are
+missing in the same way every time: every claim is present, under a name this package has never heard of.
+
+So `generic` is configurable. Point it at the names your provider actually uses, through `quirks_kwargs`:
+
+```python
+"corp": {
+    "provider": "generic",
+    "issuer": "https://example.auth0.com/",
+    "client_id": env("BASTION_CLIENT_ID"),
+    "client_secret": env("BASTION_CLIENT_SECRET"),
+    "quirks_kwargs": {
+        "groups_claim": "https://example.com/groups",
+        "groups_format": "display_name",
+        "expected_claims": {"org_id": "org_abc123"},
+    },
+    "staff_groups": ["django-staff"],
+},
+```
+
+| Key | Default | What it is for |
+|---|---|---|
+| `subject_claim` | `sub` | The stable identifier. Change it where `sub` is pairwise per client and something else is stable |
+| `groups_claim` | `groups` | Where group membership lives |
+| `groups_format` | `unknown` | What the values mean: `opaque_id`, `display_name`, `full_path`, `qualified`, `sid` |
+| `email_claim` | `email` | Where the address lives |
+| `email_verified_claim` | `email_verified` | Where the provider's opinion of it lives |
+| `mfa_methods` | `mfa`, `otp`, `hwk`, `swk` | `amr` values that count as a second factor. Replaces the defaults rather than adding to them |
+| `expected_claims` | none | Claims pinned to exact values. The generic form of the tenant boundary `entra` and `google` hardcode |
+
+**The names are declared, never sniffed.** Nothing inspects a token to work out which claim looks like a
+group list. Guessing that is how a package ends up granting staff from a claim an attacker influenced, so
+the only supported answer is that somebody reads their provider's documentation and writes the name down.
+
+**Pin your tenant if the provider serves more than one.** Without `expected_claims`, a multi-tenant
+provider issues perfectly valid tokens for organisations you have never heard of, and every other check in
+this package agrees they are valid. Auth0 organisations, Cognito user pools and Zitadel orgs all need this.
+
+Shapes taken from vendor documentation, and each is covered by a test:
+
+| Provider | `quirks_kwargs` |
+|---|---|
+| Auth0 | `{"groups_claim": "https://yourapp/groups", "groups_format": "display_name"}` |
+| AWS Cognito | `{"groups_claim": "cognito:groups", "groups_format": "display_name"}` |
+| Ping Identity | `{"groups_claim": "memberOf", "groups_format": "qualified"}` |
+| Zitadel | `{"groups_claim": "urn:zitadel:iam:org:project:roles", "groups_format": "display_name"}` |
+| Authentik | none — it is already spec-shaped |
+
+These are **from documentation, not from a live tenant**, the same standard `okta` and `keycloak` are held
+to. The first person to run one will find whatever is wrong; the issue tracker is the right place for it.
+
+## When configuration is not enough
+
+Some quirks are not a claim name. A subject assembled from two claims, a group list that arrives
+base64-encoded, a vendor that signals truncation its own way — those need code.
+
+Subclass `ProviderQuirks` and give `provider` the import path:
+
+```python
+"provider": "myproject.idp.AcmeQuirks",
+```
+
+Refused at startup, with the reason, unless it names a `ProviderQuirks` subclass — so a typo pointing at
+something unrelated fails on `manage.py check` rather than at somebody's first login.
+
+## Adding a provider to this package
 
 `REGISTRY` in `protocols/oidc/quirks.py` maps an identifier to a `ProviderQuirks` subclass. A new entry
 needs a row here, and a test asserts that: a provider in the registry with no row, or a row naming a
 provider that is not registered, fails the suite.
+
+A profile earns its place by carrying something configuration cannot express. A provider whose only
+difference is where its groups live does not need one — that is what `groups_claim` is for, and a profile
+that only sets a claim name is a maintenance obligation in exchange for nothing.

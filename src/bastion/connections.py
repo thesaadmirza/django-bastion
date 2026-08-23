@@ -25,11 +25,33 @@ from bastion.protocols.oidc.client import ClientAuthMethod
 from bastion.protocols.oidc.discovery import DiscoveryCache, ProviderMetadata
 from bastion.protocols.oidc.jwks import JWKSStore
 from bastion.protocols.oidc.quirks import REGISTRY, ProviderQuirks
+from bastion.protocols.oidc.quirks import resolve as resolve_quirks
 from bastion.protocols.oidc.transaction import CacheTransactionStore, TransactionStore
 from bastion.protocols.oidc.transport import Transport, UrllibTransport
 from bastion.protocols.oidc.validation import ValidationPolicy
 
 _REQUIRED = ("issuer", "client_id")
+
+
+def _accepted_kwargs(profile: type[ProviderQuirks]) -> str:
+    """The keyword names a profile's constructor will take.
+
+    Listed back to the operator on a rejection. "unexpected keyword argument
+    'group_claim'" says what is wrong and not what would be right, and the
+    answer is otherwise only in the source.
+    """
+    import inspect
+
+    try:
+        parameters = inspect.signature(profile).parameters
+    except (TypeError, ValueError):  # pragma: no cover - builtins have no signature
+        return ""
+    names = [
+        name
+        for name, spec in parameters.items()
+        if name != "self" and spec.kind is not inspect.Parameter.VAR_KEYWORD
+    ]
+    return ", ".join(sorted(names))
 
 
 @dataclass
@@ -102,19 +124,47 @@ class Connection:
 
     _discovery: DiscoveryCache | None = field(default=None, repr=False)
     _keys: JWKSStore | None = field(default=None, repr=False)
+    _quirks: ProviderQuirks | None = field(default=None, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def __post_init__(self) -> None:
-        if self.provider not in REGISTRY:
+        # Built here, not lazily. `quirks_kwargs` is forwarded to a constructor,
+        # and an unforwarded name is a TypeError -- which lazily would mean a
+        # misspelled claim name boots fine, passes every check, and fails at
+        # somebody's first login. That is the djangosaml2 SAML_CONFIG shape the
+        # checks module opens by naming as the thing to avoid, so the dict is
+        # resolved against a real signature before this object exists.
+        #
+        # ConfigurationError rather than TypeError because that is the contract
+        # every caller already handles: build_connection, the login path and
+        # bastion.E027 all catch it, so a bad claim name arrives as a startup
+        # check failure with the accepted names listed.
+        self._quirks = self._build_quirks()
+
+    def _build_quirks(self) -> ProviderQuirks:
+        profile = resolve_quirks(self.provider)
+        try:
+            return profile(**self.quirks_kwargs)
+        except TypeError as exc:
+            accepted = _accepted_kwargs(profile)
+            detail = f"accepts: {accepted}" if accepted else "accepts no options"
             raise ConfigurationError(
-                f"unknown provider {self.provider!r}. Known: {sorted(REGISTRY)}"
-            )
+                f"quirks_kwargs for provider {self.provider!r} is not usable: {exc}. "
+                f"{profile.__name__} {detail}."
+            ) from exc
 
     # ------------------------------------------------------------- resources --
 
     @property
     def quirks(self) -> ProviderQuirks:
-        return REGISTRY[self.provider](**self.quirks_kwargs)
+        """The profile, built once in ``__post_init__``.
+
+        Rebuilt per access previously, which repeated the validation on every
+        login and every doctor run for an object that never changes.
+        """
+        if self._quirks is None:  # pragma: no cover - __post_init__ always sets it
+            self._quirks = self._build_quirks()
+        return self._quirks
 
     @property
     def discovery(self) -> DiscoveryCache:
