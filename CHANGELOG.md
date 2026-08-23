@@ -14,6 +14,28 @@ Nothing since 0.1.2.
 
 ## [0.1.2] - 2026-08-23
 
+### Added
+
+- **A startup check on the cache behind the transaction store.** A login is
+  minted by the worker that starts it and read by whichever worker the
+  provider's callback lands on, and those are the same process only by chance.
+  A store the workers do not share turns that chance into the failure mode:
+  some logins complete and the rest die at the callback, intermittently, with
+  every setting looking correct.
+
+  `MemoryTransactionStore` documents this, so anyone who reaches for it has
+  read it. The default is `CacheTransactionStore`, which looks like it does not
+  have the problem and inherits it from whatever cache it points at — and
+  Django's own default cache is `LocMemCache`, which is per-process. A project
+  that never configured `CACHES` was getting the memory store's behaviour
+  without having chosen it.
+
+  `bastion.W034` reports that, as a warning: one worker is a real
+  configuration, and worker count cannot be seen from a check. `bastion.E033`
+  reports the two that can never work at all, an alias missing from `CACHES`
+  and `DummyCache`, and becomes `bastion.W033` where nothing routed can reach a
+  connection — the same split `bastion.E027` and `bastion.W027` already make.
+
 ### Security
 
 - **Break-glass refused a username nobody held more slowly than one somebody
