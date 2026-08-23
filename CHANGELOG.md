@@ -10,6 +10,10 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+Nothing since 0.1.3.
+
+## [0.1.3] - 2026-08-23
+
 ### Changed
 
 - **The break-glass refusal path can no longer lose its timing equalisation to
@@ -963,7 +967,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/thesaadmirza/django-bastion/compare/v0.0.1a9...v0.1.0
