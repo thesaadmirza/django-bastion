@@ -411,8 +411,15 @@ def _index_session(request: HttpRequest, connection: Connection, result: LoginRe
     from bastion import sessions as session_index
     from bastion.models import FederatedIdentity
 
+    # filter(), not the for_claims() queryset method that says the same thing.
+    # as_manager() builds the manager dynamically, so a checker without the
+    # django-stubs plugin cannot see the custom method on it -- which is the
+    # population the pyright job exists to speak for. The backend resolves this
+    # same identity the same way.
     identity = (
-        FederatedIdentity.objects.for_claims(result.identity.issuer, result.identity.subject)
+        FederatedIdentity.objects.filter(
+            issuer=result.identity.issuer, subject=result.identity.subject
+        )
         .only("id")
         .first()
     )
