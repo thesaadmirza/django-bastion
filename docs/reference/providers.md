@@ -13,11 +13,16 @@ reading of a document, not a test result.
 | `entra` | **Live.** Discovery, JWKS, key parsing and claim quirks run against Microsoft's endpoints, plus a real tenant during a deployment |
 | `google` | **Discovery only.** The live discovery document is public and was read; no sign-in has been driven through it |
 | `okta` | From the specification and vendor documentation. No live tenant |
-| `keycloak` | From the specification and vendor documentation. No live instance |
-| `generic` | Spec defaults. Correct for very little in practice — name your provider |
+| `keycloak` | **Live.** A full sign-in driven against Keycloak 26 over TLS: discovery, JWKS, PKCE, the code exchange, group mapping from the full-path claim, and a back-channel logout Keycloak itself posted back |
+| `generic` | Spec defaults until configured, and correct for very little until then. [Name your claims](#using-a-provider-that-is-not-listed) or name your provider |
 
 Nobody should read "from the specification" as broken. It means the failure mode is undiscovered, and the
 first person to run it will find out.
+
+What "live" bought on Keycloak, since the point of the distinction is that it finds things: the group
+claim is absent from the token until a group membership mapper is added to the client, and `sid` only
+arrives once *Backchannel logout session required* is on. Both are described below and neither was
+discoverable from the specification.
 
 ## What each provider gives you
 

@@ -44,6 +44,19 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ### Changed
 
+- **The `keycloak` profile is verified against a live instance** rather than
+  against its documentation. A full sign-in was driven through Keycloak 26 over
+  TLS — discovery, JWKS, PKCE, the code exchange, group mapping from the
+  full-path claim — and a back-channel logout that Keycloak itself posted back
+  over the network. It is the second profile after `entra` to move off "from
+  the specification", and the only one proven end to end including logout.
+
+  Two things the live run found that the specification does not mention, both
+  now in the provider matrix: the group claim is absent from the token until a
+  group membership mapper is added to the client, and `sid` only arrives once
+  *Backchannel logout session required* is switched on. Without the second,
+  single-session logout silently degrades to ending nothing.
+
 - `bastion_doctor` names the claim it will read groups from, rather than only
   counting the group names configured. Reading the right list from the wrong
   claim is the most common way this is misconfigured, and it looked identical
