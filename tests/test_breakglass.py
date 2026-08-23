@@ -362,6 +362,61 @@ class TestAudit:
             authenticate_break_glass(username="firefighter", password="wrong")
         assert AuditEvent.objects.filter(event_type=Event.PROTOCOL_FALLBACK).exists()
 
+    @pytest.mark.parametrize(
+        ("username", "password", "outcome", "reason"),
+        [
+            ("nobody", "wrong", "failure", "unknown-account"),
+            ("ordinary", "wrong", "denied", "not-a-break-glass-account"),
+            ("benched", "wrong", "denied", "inactive"),
+            ("firefighter", "wrong", "failure", "bad-password"),
+            ("firefighter", "a-real-password", "success", "used"),
+        ],
+    )
+    def test_each_gate_records_its_own_outcome_and_reason(
+        self, enabled, operator, username: str, password: str, outcome: str, reason: str
+    ) -> None:
+        """The audit record is the only place that says which gate was failed.
+
+        Whichever of them refuses, the caller is told "credentials" and nothing
+        else, deliberately and permanently. So an investigator reconstructing an
+        attempt has the reason column and the outcome column, and that makes
+        these strings a contract rather than an implementation detail. Renaming
+        one, or moving a branch from DENIED to FAILURE, changes what a saved
+        query matches and what an alert fires on. Nothing that merely asserts a
+        record was written would notice.
+
+        The distinction between the two outcomes carries the weight here.
+        FAILURE is a name that did not resolve or a password that did not match;
+        DENIED is an account that exists and is turned away anyway. Collapsing
+        them would still leave every refusal audited and every test about
+        refusing green.
+
+        Asserted as literals rather than through ``Outcome`` and the reason
+        constants the service uses, because the stored string is the thing being
+        pinned. Reading a value back out of the same enum the writer used would
+        keep passing through a rename, which is the change most worth catching.
+        """
+        User.objects.create_user(username="ordinary")
+        benched = User.objects.create_user(username="benched", is_active=False)
+        BreakGlassAccount.objects.create(user=benched, reason="incident response")
+
+        if outcome == "success":
+            authenticate_break_glass(username=username, password=password)
+        else:
+            with pytest.raises(BreakGlassDenied) as refusal:
+                authenticate_break_glass(username=username, password=password)
+            assert refusal.value.reason == "credentials"
+
+        # One record per attempt, not merely one that matches. A branch that
+        # recorded twice would still satisfy a filter on the pair below.
+        written = [
+            (record.outcome, record.reason)
+            for record in AuditEvent.objects.filter(event_type=Event.PROTOCOL_FALLBACK).order_by(
+                "id"
+            )
+        ]
+        assert written == [(outcome, reason)]
+
 
 class TestLifecycleExemption:
     def test_a_flagged_account_is_recognised(self, operator) -> None:
