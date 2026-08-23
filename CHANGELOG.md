@@ -10,6 +10,12 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
+Nothing since 0.1.5.
+
+## [0.1.5] - 2026-08-24
+
+No migration in this one. The tables `0.1.4` added are the current set.
+
 ### Added
 
 - **A provider with no profile can now be configured instead of coded.** Five
@@ -1089,7 +1095,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.1...v0.1.2
