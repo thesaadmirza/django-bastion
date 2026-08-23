@@ -104,14 +104,16 @@ def check_connection(
 
 
 def _config_checks(connection: Connection) -> Iterator[Result]:
+    unconfigured_generic = connection.provider == "generic" and not connection.quirks_kwargs
     yield Result(
         "provider",
         Status.OK,
         f"Using the {connection.provider!r} quirks profile.",
         hint=(
-            "The generic profile has no useful behaviour for groups or MFA. If "
-            "this is a real provider, name it."
-            if connection.provider == "generic"
+            "The generic profile on its own is spec defaults, which is correct "
+            "for very little. Name your provider if it has a profile, or tell "
+            "the generic one where your claims live through quirks_kwargs."
+            if unconfigured_generic
             else None
         ),
     )
@@ -132,16 +134,22 @@ def _config_checks(connection: Connection) -> Iterator[Result]:
 
     if connection.grants_privileges:
         groups = connection.staff_groups + connection.superuser_groups
+        claim = connection.quirks.groups_claim
         yield Result(
             "group mapping",
             Status.UNVERIFIABLE,
-            f"Configured to grant privileges from {_plural(len(groups), 'group name')}.",
+            (
+                f"Configured to grant privileges from "
+                f"{_plural(len(groups), 'group name')}, read from the {claim!r} claim."
+            ),
             hint=(
-                "Whether the provider actually emits a group claim, and in what "
+                "Whether the provider actually emits that claim, and in what "
                 "format, cannot be established without a real login. Okta omits "
                 "the claim unless configured; Entra sends object GUIDs rather "
-                "than names; Google's ID token has no group claim at all. Sign "
-                "in once and read the audit record before relying on this."
+                "than names; Google's ID token has no group claim at all. If "
+                "yours puts groups somewhere else, name it in quirks_kwargs as "
+                "groups_claim. Sign in once and read the audit record before "
+                "relying on this."
             ),
         )
     elif connection.require_privileged_user and not connection.persist_refused_identities:

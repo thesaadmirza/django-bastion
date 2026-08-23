@@ -117,7 +117,7 @@ One entry per provider. Keys map to `Connection` fields.
 | `client_id` | yes | |
 | `client_secret` | no | Omit for a public client; PKCE then carries the whole defence |
 | `provider` | no | `generic`, `entra`, `okta`, `google`, `keycloak`. **The generic profile has no useful behaviour for groups or MFA** — name your provider |
-| `quirks_kwargs` | no | Provider-specific. `{"expected_tenant": ...}` for Entra, `{"hosted_domain": ...}` for Google |
+| `quirks_kwargs` | no | Provider-specific. `{"expected_tenant": ...}` for Entra, `{"hosted_domain": ...}` for Google. On `generic` this is where you name the claims your provider actually uses — `subject_claim`, `groups_claim`, `groups_format`, `email_claim`, `email_verified_claim`, `mfa_methods`, `expected_claims` — which is how a provider with no profile is used without writing one. See [the provider matrix](providers.md) |
 | `scopes` | `("openid", "email", "profile")` | |
 | `auth_method` | `client_secret_basic` | Or `client_secret_post`, `none` |
 | `staff_groups` | `()` | Membership grants `is_staff`. **Promote-only.** Needs a group claim: on Google there is none, so this can never match and roles are assigned locally — see [the provider matrix](providers.md) |

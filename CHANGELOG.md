@@ -10,7 +10,80 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.4.
+### Added
+
+- **A provider with no profile can now be configured instead of coded.** Five
+  profiles ship and there are far more than five identity providers. The ones
+  that were missing were missing in the same way every time: every claim was
+  present, under a name this package had never heard of, and the only way in
+  was writing a `ProviderQuirks` subclass and getting it into the registry.
+
+  `generic` takes the names now, through `quirks_kwargs`: `subject_claim`,
+  `groups_claim`, `groups_format`, `email_claim`, `email_verified_claim`,
+  `mfa_methods`, and `expected_claims`. Auth0's namespaced group claim,
+  Cognito's `cognito:groups`, Ping's `memberOf` and Zitadel's URN roles are all
+  a settings entry, each covered by a test against the shape that vendor's
+  documentation describes.
+
+  The names are declared, never sniffed. Nothing inspects a token to work out
+  which claim looks like a group list, because that is how a package ends up
+  granting staff from whichever claim an attacker could influence. Left
+  unconfigured, `generic` is still spec defaults and still correct for very
+  little — the docstring saying so has not changed.
+
+  `expected_claims` is the generic form of the tenant pin `entra` and `google`
+  hardcode. Without one, a multi-tenant provider issues perfectly valid tokens
+  for organisations you have never heard of, and every other check in this
+  package agrees they are valid.
+
+- **`provider` accepts an import path** to a `ProviderQuirks` subclass, for
+  quirks no claim name can express — a subject assembled from two claims, a
+  group list that arrives encoded. Refused at startup with the reason unless
+  it names a subclass, so a typo fails on `manage.py check` rather than at
+  somebody's first login.
+
+### Changed
+
+- **The `keycloak` profile is verified against a live instance** rather than
+  against its documentation. A full sign-in was driven through Keycloak 26 over
+  TLS — discovery, JWKS, PKCE, the code exchange, group mapping from the
+  full-path claim — and a back-channel logout that Keycloak itself posted back
+  over the network. It is the second profile after `entra` to move off "from
+  the specification", and the only one proven end to end including logout.
+
+  Two things the live run found that the specification does not mention, both
+  now in the provider matrix: the group claim is absent from the token until a
+  group membership mapper is added to the client, and `sid` only arrives once
+  *Backchannel logout session required* is switched on. Without the second,
+  single-session logout silently degrades to ending nothing.
+
+- `bastion_doctor` names the claim it will read groups from, rather than only
+  counting the group names configured. Reading the right list from the wrong
+  claim is the most common way this is misconfigured, and it looked identical
+  to the provider not sending groups at all.
+
+- The doctor's advice about the generic profile no longer fires when that
+  profile has been configured. It said to name a real provider, which is now
+  wrong advice for a deployment that told the generic one where its claims are.
+
+- **`quirks_kwargs` is resolved against a real constructor signature when the
+  connection is built, rather than at first use.** Making it load-bearing made
+  it the opaque-dict shape [the checks
+  module](src/bastion/checks.py) opens by naming as the thing to avoid: a
+  misspelled `group_claim` booted fine, passed every check, and raised a
+  `TypeError` at somebody's first login. It is a `ConfigurationError` now, which
+  `bastion.E027` already reports at startup, and the message lists the names the
+  profile does accept.
+
+- The provider profile is built once per connection instead of on every access.
+  It was rebuilt on each login and each doctor run, revalidating an object that
+  never changes.
+
+- `email` and `email_verified` are read through the provider profile rather
+  than hardcoded, so both can move with the rest. `email_verified` also accepts
+  the strings `"true"` and `"false"`, which several providers send instead of
+  the boolean. Nothing else is guessed at: this is the claim that decides
+  whether an address may adopt an existing administrator's account.
 
 ## [0.1.4] - 2026-08-23
 
