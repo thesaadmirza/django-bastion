@@ -247,6 +247,36 @@ class TestNetworkRestriction:
         assert AuditEvent.objects.filter(reason="network").count() == 1
         assert len(ALERTS) == 1
 
+    def test_the_refusal_records_denied_with_the_network_reason(
+        self, settings, operator, rf
+    ) -> None:
+        """The gate above the credential path, pinned the same way they are.
+
+        This one is not a credential refusal and does not pretend to be. The
+        caller is told "network" rather than the generic "credentials", because
+        an address outside the allowlist has not made a claim about who it is
+        and there is nothing to keep quiet about. What the record says is still
+        the only thing an investigation has, and DENIED rather than FAILURE is
+        the load-bearing half: nothing here failed a check, the request was
+        turned away before it could make one.
+        """
+        settings.BASTION = {
+            "BREAK_GLASS": {
+                "ENABLED": True,
+                "ALERT_SINKS": [SINK],
+                "ALLOWED_NETWORKS": ["10.0.0.0/8"],
+            }
+        }
+        self._refuse(rf)
+
+        written = [
+            (record.outcome, record.reason)
+            for record in AuditEvent.objects.filter(event_type=Event.PROTOCOL_FALLBACK).order_by(
+                "id"
+            )
+        ]
+        assert written == [("denied", "network")]
+
     def test_a_second_address_is_recorded_separately(self, settings, operator, rf) -> None:
         """Deduplication must not lose the evidence that the source moved."""
         settings.BASTION = {

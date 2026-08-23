@@ -88,6 +88,32 @@ class TestThrottleFires:
             attempt(rf, PASSWORD)
         assert AuditEvent.objects.filter(reason="throttled").exists()
 
+    def test_the_refusal_records_denied_with_the_throttled_reason(self, rf, account) -> None:
+        """DENIED rather than FAILURE, and exactly one record for the window.
+
+        The credential attempts underneath this are FAILURE: a password was
+        offered and did not match. The throttle refuses before any of that, so
+        nothing failed, and the two must stay distinguishable in the log or the
+        count that drives this control cannot be reconstructed from it. The
+        counting query already excludes the throttle's own records by reason,
+        so a rename here would quietly change what the throttle counts.
+
+        Asserted as a list rather than through an existence check so that the
+        shape is pinned and not merely the presence of something matching. That
+        the refusal is recorded once per window rather than once per attempt is
+        a different property, pinned by the deduplication test below: one
+        throttled attempt cannot tell the two apart.
+        """
+        fail(rf, 3)
+        with pytest.raises(BreakGlassDenied):
+            attempt(rf, PASSWORD)
+
+        written = [
+            (record.outcome, record.reason)
+            for record in AuditEvent.objects.filter(reason="throttled").order_by("id")
+        ]
+        assert written == [("denied", "throttled")]
+
     def test_unknown_accounts_count_too(self, rf, account) -> None:
         """Otherwise the limit is trivially avoided by varying the username."""
         for index in range(3):
