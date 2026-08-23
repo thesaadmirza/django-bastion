@@ -105,7 +105,11 @@ class TestAuthentication:
 
     @pytest.mark.parametrize(
         ("username", "case"),
-        [("nobody", "unknown account"), ("ordinary", "not flagged")],
+        [
+            ("nobody", "unknown account"),
+            ("ordinary", "not flagged"),
+            ("benched", "inactive"),
+        ],
     )
     def test_a_refused_path_hashes_exactly_as_much_as_a_real_one(
         self, enabled, operator, monkeypatch, username: str, case: str
@@ -113,7 +117,8 @@ class TestAuthentication:
         """Timing equalisation, asserted structurally rather than measured.
 
         Returning early without hashing tells an attacker, by response time,
-        whether the account exists and whether it is a break-glass account.
+        whether the account exists, whether it is a break-glass account, and
+        whether it is still active.
 
         Hashing *more* than the real path answers the same question with the
         sign reversed, which is what this used to do: the refused branches built
@@ -127,6 +132,12 @@ class TestAuthentication:
         counting the rounds is what needs protecting from a future refactor.
         """
         User.objects.create_user(username="ordinary", password="a-real-password")
+        # The only case needing a flagged account of its own. ``firefighter``
+        # is what the count is measured against, so it has to stay usable --
+        # deactivating it would move the baseline rather than produce the case.
+        # No password, because this branch refuses before anything reads one.
+        benched = User.objects.create_user(username="benched", is_active=False)
+        BreakGlassAccount.objects.create(user=benched, reason="incident response")
 
         # Counted on the hasher itself rather than on ``make_password`` or
         # ``check_password``. Those two are imported by value into several
