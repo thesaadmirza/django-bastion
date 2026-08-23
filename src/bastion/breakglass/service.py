@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import ipaddress
 import logging
-from typing import Any
+from typing import Any, NoReturn
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -236,25 +236,44 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
 
         user = user_model._default_manager.get(**{user_username_field(): username})
     except user_model.DoesNotExist:
-        # Hash anyway. Skipping the work here is a timing oracle that says
-        # whether the account exists, and this endpoint is one an attacker
-        # would very much like to enumerate.
-        _equalise(user_model, password)
-        _record(None, Outcome.FAILURE, "unknown-account", request)
-        raise BreakGlassDenied("credentials") from None
+        # Skipping the hash here is a timing oracle that says whether the
+        # account exists, and this endpoint is one an attacker would very much
+        # like to enumerate.
+        _refuse_credentials(
+            user_model=user_model,
+            password=password,
+            user=None,
+            outcome=Outcome.FAILURE,
+            reason="unknown-account",
+            request=request,
+            suppress_context=True,
+        )
 
     account = BreakGlassAccount.objects.active().filter(user=user).first()
     if account is None:
-        _equalise(user_model, password)
-        _record(user, Outcome.DENIED, "not-a-break-glass-account", request)
-        raise BreakGlassDenied("credentials")
+        _refuse_credentials(
+            user_model=user_model,
+            password=password,
+            user=user,
+            outcome=Outcome.DENIED,
+            reason="not-a-break-glass-account",
+            request=request,
+        )
 
     if not user.is_active:
-        _equalise(user_model, password)
-        _record(user, Outcome.DENIED, "inactive", request)
-        raise BreakGlassDenied("credentials")
+        _refuse_credentials(
+            user_model=user_model,
+            password=password,
+            user=user,
+            outcome=Outcome.DENIED,
+            reason="inactive",
+            request=request,
+        )
 
     if not user.check_password(password):
+        # Refused inline rather than through ``_refuse_credentials``: the
+        # comparison in the condition above has already spent the round that
+        # helper spends on behalf of the branches which never reach it.
         _record(user, Outcome.FAILURE, "bad-password", request)
         raise BreakGlassDenied("credentials")
 
@@ -264,11 +283,67 @@ def authenticate_break_glass(*, username: str, password: str, request: Any = Non
     return user
 
 
+def _refuse_credentials(
+    *,
+    user_model: Any,
+    password: str,
+    user: Any,
+    outcome: Outcome,
+    reason: str,
+    request: Any,
+    suppress_context: bool = False,
+) -> NoReturn:
+    """Refuse an attempt that never reached the password comparison.
+
+    Every gate between finding the account and checking its password ends here:
+    a name that resolves to nobody, an account that is not flagged for
+    break-glass, and a flagged one whose user is inactive. Each has to spend the
+    equalising hash round, record its own audit reason, and raise the same
+    generic refusal, in that order -- and each used to do it in its own three
+    lines.
+
+    Three copies of a security-relevant sequence is three chances for a fourth
+    branch to be written without the first line, and that omission is invisible
+    from outside: the branch still refuses, the audit record still appears, and
+    every test that asserts on outcomes still passes. The only symptom is that
+    the response comes back a KDF round early, which is the enumeration oracle
+    ``_equalise`` exists to close.
+
+    Returning ``NoReturn`` is half the point. A branch cannot call this and
+    forget to hash, because hashing is no longer something the branch does; it
+    cannot call this and then carry on into the password comparison, because
+    there is nothing to carry on to.
+
+    ``outcome`` and ``reason`` stay per-branch because the audit record is the
+    one place where which gate was failed is legitimate information --
+    ``FAILURE`` for a name that does not resolve, ``DENIED`` for one that does
+    and is turned away anyway. Only the exception is uniform: whoever called
+    this endpoint is told "credentials" whichever gate it was.
+
+    ``suppress_context`` is for the unknown-account branch, which reaches this
+    from inside ``except DoesNotExist``. Without it that ``DoesNotExist`` is
+    chained onto the refusal and displayed above it as the thing that caused
+    it, which it is not -- a missing row is how this function learned the
+    account is unknown, not an error anybody handling ``BreakGlassDenied``
+    needs to read.
+    """
+    _equalise(user_model, password)
+    _record(user, outcome, reason, request)
+    if suppress_context:
+        raise BreakGlassDenied("credentials") from None
+    raise BreakGlassDenied("credentials")
+
+
 def _equalise(user_model: Any, password: str) -> None:
     """Spend the same hashing work a real comparison would, and discard it.
 
-    Every branch that refuses before reaching ``user.check_password`` calls
-    this, so the cost of an attempt does not say which branch was taken.
+    ``_refuse_credentials`` is the only caller, and it calls this on behalf of
+    every branch that refuses after the account lookup and before
+    ``user.check_password``, so the cost of an attempt does not say which
+    branch was taken. A gate added in that range goes through the helper rather
+    than calling this directly; the gates above the lookup -- disabled, network,
+    throttle -- deliberately spend nothing, so that a flood costs a query rather
+    than a KDF round.
 
     One KDF round, matching the one the real comparison spends. The previous
     version hashed a fixed string with ``make_password`` and then verified the
