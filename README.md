@@ -100,11 +100,9 @@ rejected.
 
 **Your provider's claims, under whatever names it uses.** Auth0 namespaces custom claims behind a URI,
 Cognito prefixes with `cognito:`, Ping uses `memberOf`. Name the claim in `quirks_kwargs` and the generic
-profile reads it, so a provider nobody has written a class for does not need one:
-
-On the `generic` provider you name them: `groups_claim`, `groups_format`, `subject_claim`,
-`email_claim`, `email_verified_claim`. [The provider matrix](docs/reference/providers.md) has a
-copyable block per vendor.
+profile reads it, so a provider nobody has written a class for does not need one. The names are
+`groups_claim`, `groups_format`, `subject_claim`, `email_claim` and `email_verified_claim`, and
+[the provider matrix](docs/reference/providers.md) has a copyable block per vendor.
 
 The names are declared, never sniffed. Nothing inspects a token to work out which claim looks like a
 group list, because that is how a package ends up granting staff from whichever claim an attacker could

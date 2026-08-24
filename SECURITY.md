@@ -68,6 +68,20 @@ If that changes, we will amend this document and announce it rather than quietly
 We also do not couple our disclosure date to the publication of the GitHub advisory. The Advisory Database
 has been running multi-week publication delays; we request the CVE early and ship on our own schedule.
 
+**This code has never had a third-party security audit.** No independent reviewer has been over the
+protocol layer, and the tests were written by the same people who wrote the code, so they cover the
+attacks we thought of. That is the ordinary condition for a package this age and it is worth stating
+rather than leaving to be assumed, because the usual signals of scrutiny — an audit report, a CVE
+history, adopters who reviewed it before adopting — are not there yet either.
+
+What exists instead is meant to be checkable without trusting us. The protocol code is small: signature
+verification is around 230 lines, and the algorithms it accepts are an allowlist rather than a denylist,
+so what it refuses is visible by reading rather than by taking our word. The
+[threat model](docs/security/threat-model.md) names what is out of scope, and the
+[provider matrix](docs/reference/providers.md) says which providers have been run against a live server
+and which were written from vendor documentation. None of that substitutes for an audit. It is what we
+have until there is one.
+
 ## Supported versions
 
 See [SUPPORT_MATRIX.md](SUPPORT_MATRIX.md). We ship security fixes for the current minor series and the
