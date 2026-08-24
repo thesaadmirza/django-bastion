@@ -3,6 +3,10 @@
 Enterprise SSO and identity governance for Django. Puts the admin behind your identity provider, turns
 the group claim into staff and superuser rights, and records who got what and when.
 
+Works with any OIDC provider. Entra, Okta, Google and Keycloak have profiles; Auth0, AWS Cognito, Ping,
+Zitadel and anything else are configured by naming the claims they use. Only Entra and Keycloak have been
+run against live servers, and [the provider matrix](docs/reference/providers.md) says so per provider.
+
 > **Version 0.1.5, and the configuration surface is now frozen.** Every settings key, check id and audit
 > event name is covered by a written
 > [deprecation policy](docs/reference/deprecation-policy.md): a renamed key is refused at startup with a
@@ -93,6 +97,23 @@ group they're missing and who to ask.
 serializable condition tree is the 0.2 design and is not built yet; [the
 roadmap](docs/explanation/roadmap.md) says what it will look like and which two approaches were already
 rejected.
+
+**Your provider's claims, under whatever names it uses.** Auth0 namespaces custom claims behind a URI,
+Cognito prefixes with `cognito:`, Ping uses `memberOf`. Name the claim in `quirks_kwargs` and the generic
+profile reads it, so a provider nobody has written a class for does not need one:
+
+On the `generic` provider you name them: `groups_claim`, `groups_format`, `subject_claim`,
+`email_claim`, `email_verified_claim`. [The provider matrix](docs/reference/providers.md) has a
+copyable block per vendor.
+
+The names are declared, never sniffed. Nothing inspects a token to work out which claim looks like a
+group list, because that is how a package ends up granting staff from whichever claim an attacker could
+influence. There is also `expected_claims`, which pins a claim to an exact value: without one, a provider
+serving more than one organisation issues perfectly valid tokens for all of them.
+
+**Disabling someone at the provider ends the session they already have.** Back-channel logout, over
+OIDC. Without it their next sign-in fails but the browser tab they left open keeps working until the
+cookie expires, which is the gap behind not being able to say when access actually ended.
 
 The qualifier is load-bearing. **Google's ID token carries no group claim at all**, so on a Google
 connection those two lists cannot match anything and roles are assigned locally instead. That is not a
