@@ -59,9 +59,10 @@ No migration in this one. The tables `0.1.4` added are the current set.
 
   Two things the live run found that the specification does not mention, both
   now in the provider matrix: the group claim is absent from the token until a
-  group membership mapper is added to the client, and `sid` only arrives once
-  *Backchannel logout session required* is switched on. Without the second,
-  single-session logout silently degrades to ending nothing.
+  group membership mapper is added to the client, and that mapper's `full.path`
+  switch decides whether the values read `/django-admins` or `django-admins` —
+  so it decides which `groups_format` is correct, and a leading slash matched
+  against a mapper that has it off matches nothing, silently.
 
 - `bastion_doctor` names the claim it will read groups from, rather than only
   counting the group names configured. Reading the right list from the wrong
