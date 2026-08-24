@@ -10,7 +10,36 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.5.
+Nothing since 0.1.6.
+
+## [0.1.6] - 2026-08-24
+
+Documentation only. No code changed, and it is a release rather than a commit
+because PyPI renders the README as the project page, so the corrections below
+are invisible to anyone arriving there until a version carries them.
+
+### Fixed
+
+- **A Keycloak claim in the provider matrix was wrong.** It said `sid` only
+  arrives once *Backchannel logout session required* is switched on. Reading
+  real ID tokens from a client with that flag off shows `sid` present
+  regardless. The claim came from enabling the flag before the first
+  observation and then describing the setup rather than running an experiment,
+  which is the failure the "live" column exists to prevent.
+
+  What the flag actually governs is the logout token, and nothing has verified
+  that, so no claim about it is made now.
+
+  Retesting against the negative case found something more useful in its place:
+  the group membership mapper's `full.path` switch decides whether the values
+  read `/django-admins` or `django-admins`, and therefore which `groups_format`
+  is correct. A leading slash in `staff_groups` matched against a mapper with it
+  off matches nothing, and says nothing about why.
+
+- **The README was two releases behind.** Back-channel logout shipped in 0.1.4
+  and configurable claims in 0.1.5, and neither appeared on the front page, so
+  the PyPI project page described a package that does less than it does. Both
+  are there now, each with its limit stated alongside it.
 
 ## [0.1.5] - 2026-08-24
 
@@ -1096,7 +1125,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.2...v0.1.3
