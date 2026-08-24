@@ -182,6 +182,15 @@ Worth reading before you adopt it.
 - **If you need only OIDC and nothing else,** [mozilla-django-oidc](https://github.com/mozilla/mozilla-django-oidc)
   is about 1,200 lines and you can read all of it in twenty minutes. That legibility is a real feature.
   Come here when you need the governance layer on top.
+- **If you already run an authenticating proxy,** put an OIDC proxy in front of Django and use the
+  built-in [`RemoteUserMiddleware`](https://docs.djangoproject.com/en/stable/howto/auth-remote-user/).
+  [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy), Traefik forward-auth and Dex all do this,
+  and for a deployment that only needs sign-in it is less code than any of the options above, ours
+  included. Two things to know before choosing it. The trust moves to your network: `RemoteUser` believes
+  whatever the proxy tells it, so anything able to reach Django directly can claim to be anyone, and
+  Django's own documentation says so. And it authenticates without deciding anything, so group-to-role
+  mapping, the audit trail and provider-driven logout remain yours to build. That gap is what this package
+  is, so if you do not need it, the proxy is the simpler answer and we would rather you used it.
 - **We are pre-1.0 and the bus factor is currently 1.** That should disqualify us from anything you cannot
   afford to fork. See [GOVERNANCE.md](GOVERNANCE.md), which states this plainly rather than burying it.
 
