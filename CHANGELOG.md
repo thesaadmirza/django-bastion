@@ -10,7 +10,42 @@ See [SECURITY.md](SECURITY.md) for how to report one.
 
 ## [Unreleased]
 
-Nothing since 0.1.6.
+Nothing since 0.1.7.
+
+## [0.1.7] - 2026-08-24
+
+Documentation only, and both entries came from the same r/django thread. Worth
+recording where they came from: the questions were fair, and neither gap was
+one we had spotted ourselves.
+
+### Added
+
+- **The authenticating proxy is named as an alternative.** An OIDC proxy in
+  front of Django with the built-in `RemoteUserMiddleware` — oauth2-proxy,
+  Traefik forward-auth, Dex — is less code than any option already in that
+  list, this package included, for a deployment that only needs sign-in.
+
+  Two caveats go with it rather than after it. `RemoteUser` believes whatever
+  the proxy tells it, so anything that can reach Django directly can claim to be
+  anyone, which moves the trust boundary into the network. And it authenticates
+  without deciding anything, so role mapping, audit and provider-driven logout
+  stay unbuilt. That gap is what this package is; where somebody does not have
+  it, the proxy is the better answer.
+
+- **`SECURITY.md` says there has been no third-party audit.** Asked whether
+  anyone could tell the code had been reviewed, and by somebody who knew what to
+  look for. The honest answer is no, and the file that promises an honest list
+  of what we do not do did not have it on the list.
+
+  It also says the part that usually goes unsaid: the tests were written by the
+  same people as the code, so they cover the attacks we thought of. The other
+  absent signals are named too, because "no audit" understates it on its own —
+  there is no CVE history and no adopters who reviewed it before adopting.
+
+### Fixed
+
+- A dangling colon in the README, left when a code block moved to the provider
+  matrix and the sentence introducing it stayed behind.
 
 ## [0.1.6] - 2026-08-24
 
@@ -1125,7 +1160,8 @@ expensive and quiet.
   login does.
 - System checks, `py.typed`, and Django 5.2 through 6.1 support.
 
-[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/thesaadmirza/django-bastion/compare/v0.1.3...v0.1.4
