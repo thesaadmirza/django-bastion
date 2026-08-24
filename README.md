@@ -7,7 +7,7 @@ Works with any OIDC provider. Entra, Okta, Google and Keycloak have profiles; Au
 Zitadel and anything else are configured by naming the claims they use. Only Entra and Keycloak have been
 run against live servers, and [the provider matrix](docs/reference/providers.md) says so per provider.
 
-> **Version 0.1.6, and the configuration surface is now frozen.** Every settings key, check id and audit
+> **Version 0.1.7, and the configuration surface is now frozen.** Every settings key, check id and audit
 > event name is covered by a written
 > [deprecation policy](docs/reference/deprecation-policy.md): a renamed key is refused at startup with a
 > message naming its replacement, and stays refused for two minor versions. What is *not* covered is
