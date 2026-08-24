@@ -19,10 +19,16 @@ reading of a document, not a test result.
 Nobody should read "from the specification" as broken. It means the failure mode is undiscovered, and the
 first person to run it will find out.
 
-What "live" bought on Keycloak, since the point of the distinction is that it finds things: the group
-claim is absent from the token until a group membership mapper is added to the client, and `sid` only
-arrives once *Backchannel logout session required* is on. Both are described below and neither was
-discoverable from the specification.
+What "live" bought on Keycloak, since the point of the distinction is that it finds things. Two
+observations, both from reading real ID tokens rather than from the specification:
+
+**The group claim is absent until a group membership mapper is added to the client.** A user who is in
+`/django-admins` produces a token with no `groups` claim at all. Everything else looks correctly
+configured and everybody appears to be in no groups.
+
+**That mapper's `full.path` switch decides the shape of the values,** and therefore which `groups_format`
+is correct. On it, the claim reads `["/django-admins"]`; off, `["django-admins"]`. Configure
+`staff_groups` with a leading slash against a mapper that has it off and nothing matches, silently.
 
 ## What each provider gives you
 
